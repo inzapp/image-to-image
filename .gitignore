@@ -1,0 +1,12 @@
+*.h5
+*.pb
+*.onnx
+*.caffemodel
+*.prototxt
+*.swp
+*.bak
+.idea/
+__pycache__/
+checkpoint/
+result_images/
+cscope.*
