@@ -104,7 +104,7 @@ class LRScheduler:
         min_mm = self.min_momentum
         max_mm = self.max_momentum
         warm_up_iterations = int(self.iterations * self.warm_up)
-        if iteration_count <= warm_up_iterations:
+        if warm_up_iterations > 0 and iteration_count <= warm_up_iterations:
             iterations = warm_up_iterations
             lr = ((np.cos(((iteration_count * np.pi) / iterations) + np.pi) + 1.0) * 0.5) * (max_lr - min_lr) + min_lr  # increase only until target iterations
             mm = ((np.cos(((iteration_count * np.pi) / iterations) +   0.0) + 1.0) * 0.5) * (max_mm - min_mm) + min_mm  # decrease only until target iterations
