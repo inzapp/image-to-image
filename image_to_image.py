@@ -49,10 +49,8 @@ class TrainingConfig:
     def __init__(self,
                  train_image_path,
                  validation_image_path,
-                 input_rows,
-                 input_cols,
-                 input_channels,
-                 output_channels,
+                 input_shape,
+                 output_shape,
                  model_name,
                  lr,
                  warm_up,
@@ -63,10 +61,8 @@ class TrainingConfig:
                  training_view=False):
         self.train_image_path = train_image_path
         self.validation_image_path = validation_image_path
-        self.input_rows = input_rows
-        self.input_cols = input_cols
-        self.input_channels = input_channels
-        self.output_channels = output_channels
+        self.input_shape = input_shape
+        self.output_shape = output_shape
         self.model_name = model_name
         self.lr = lr
         self.warm_up = warm_up
@@ -81,16 +77,16 @@ class ImageToImage(CheckpointManager):
     def __init__(self, config, training):
         super().__init__()
         assert config.save_interval >= 1000
-        assert config.input_rows % 32 == 0
-        assert config.input_cols % 32 == 0
-        assert config.input_channels in [1, 3]
-        assert config.output_channels in [1, 3]
+        assert config.input_shape[0] % 32 == 0
+        assert config.input_shape[1] % 32 == 0
+        assert config.input_shape[2] in [1, 3]
+        assert config.output_shape[0] % 32 == 0
+        assert config.output_shape[1] % 32 == 0
+        assert config.output_shape[2] in [1, 3]
         self.train_image_path = config.train_image_path
         self.validation_image_path = config.validation_image_path
-        self.input_rows = config.input_rows
-        self.input_cols = config.input_cols
-        self.input_channels = config.input_channels
-        self.output_channels = config.output_channels
+        self.input_shape = config.input_shape
+        self.output_shape = config.output_shape
         self.model_name = config.model_name
         self.lr = config.lr
         self.warm_up = config.warm_up
@@ -123,31 +119,24 @@ class ImageToImage(CheckpointManager):
                 print(f'file not found : {model_path}')
                 exit(0)
             model = tf.keras.models.load_model(self.pretrained_model_path, compile=False, custom_objects={'tf': tf})
-            self.input_rows, self.input_cols, self.input_channels = model.input_shape[1:]
-            self.output_channels = model.output_shape[-1]
+            self.input_shape = model.input_shape[1:]
             self.pretrained_iteration_count = self.parse_pretrained_iteration_count(self.pretrained_model_path)
         else:
             self.model = Model(
-                input_rows=self.input_rows,
-                input_cols=self.input_cols,
-                input_channels=self.input_channels,
-                output_channels=self.output_channels).build()
+                input_shape=self.input_shape,
+                output_shape=self.output_shape).build()
 
         self.train_data_generator = DataGenerator(
             image_paths_x=self.train_image_paths_x,
             image_paths_y=self.train_image_paths_y,
-            input_rows=self.input_rows,
-            input_cols=self.input_cols,
-            input_channels=self.input_channels,
-            output_channels=self.output_channels,
+            input_shape=self.input_shape,
+            output_shape=self.output_shape,
             batch_size=self.batch_size)
         self.validation_data_generator = DataGenerator(
             image_paths_x=self.validation_image_paths_x,
             image_paths_y=self.validation_image_paths_y,
-            input_rows=self.input_rows,
-            input_cols=self.input_cols,
-            input_channels=self.input_channels,
-            output_channels=self.output_channels,
+            input_shape=self.input_shape,
+            output_shape=self.output_shape,
             batch_size=1)
 
     def set_global_seed(self, seed=42):
@@ -217,10 +206,8 @@ class ImageToImage(CheckpointManager):
         data_generator = DataGenerator(
             image_paths_x=image_paths_x,
             image_paths_y=image_paths_y,
-            input_rows=self.input_rows,
-            input_cols=self.input_cols,
-            input_channels=self.input_channels,
-            output_channels=self.output_channels,
+            input_shape=self.input_shape,
+            output_shape=self.output_shape,
             batch_size=self.batch_size)
 
         cnt = 0
@@ -349,12 +336,15 @@ class ImageToImage(CheckpointManager):
                 return
 
     def concat(self, images):
-        need_gray_to_bgr = self.input_channels != self.output_channels
+        need_gray_to_bgr = self.input_shape[-1] != self.output_shape[-1]
         for i in range(len(images)):
             if len(images[i].shape) == 2:
                 images[i] = images[i].reshape(images[i].shape + (1,))
             if need_gray_to_bgr and images[i].shape[-1] == 1:
                 images[i] = cv2.cvtColor(images[i], cv2.COLOR_GRAY2BGR)
+            image_h, image_w = images[i].shape[:2]
+            if image_h != self.output_shape[0] and image_w != self.output_shape[1]:
+                images[i] = self.train_data_generator.resize(images[i], (self.output_shape[1], self.output_shape[0]))
         return np.concatenate(images, axis=1)
 
     def predict(self, img_x):
@@ -396,10 +386,8 @@ class ImageToImage(CheckpointManager):
         data_generator = DataGenerator(
             image_paths_x=image_paths_x,
             image_paths_y=image_paths_y,
-            input_rows=self.input_rows,
-            input_cols=self.input_cols,
-            input_channels=self.input_channels,
-            output_channels=self.output_channels,
+            input_shape=self.input_shape,
+            output_shape=self.output_shape,
             batch_size=1,
             nv12=nv12)
 

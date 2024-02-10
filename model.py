@@ -29,14 +29,26 @@ import tensorflow as tf
 
 
 class Model:
-    def __init__(self, input_rows, input_cols, input_channels, output_channels):
-        self.input_rows = input_rows
-        self.input_cols = input_cols
-        self.input_channels = input_channels
-        self.output_channels = output_channels
-        self.input_shape = (self.input_rows, self.input_cols, self.input_channels)
+    def __init__(self, input_shape, output_shape):
+        self.input_shape = input_shape
+        self.output_shape = output_shape
+        self.output_scale = self.calc_output_scale(self.input_shape, self.output_shape)
 
-    def build(self, bn=False):
+    def calc_output_scale(self, input_shape, output_shape):
+        min_rows = min(input_shape[0], output_shape[0])
+        max_rows = max(input_shape[0], output_shape[0])
+        min_cols = min(input_shape[1], output_shape[1])
+        max_cols = max(input_shape[1], output_shape[1])
+        assert max_rows % min_rows == 0, f'max rows must be multiple of min_rows, max_rows : {max_rows}, min_rows : {min_rows}'
+        assert max_cols % min_cols == 0, f'max cols must be multiple of min_cols, max_cols : {max_cols}, min_cols : {min_cols}'
+        row_scale = int(output_shape[0] / input_shape[0])
+        col_scale = int(output_shape[1] / input_shape[1])
+        assert row_scale == col_scale, f'row scale, col scale must be same. row_scale : {row_scale}, col_scale : {col_scale}'
+        output_scale = row_scale
+        assert output_scale in [1, 2, 4]
+        return output_scale
+
+    def build(self, bn=False, dts=True):
         input_layer = tf.keras.layers.Input(shape=self.input_shape, name='i2i_input')
         x = input_layer
         x = self.conv2d(x, 16, 3, 1, bn=bn, activation='relu')
@@ -54,16 +66,37 @@ class Model:
         x = self.upsampling2d(x)
         x = self.add([x, f0])
         x = self.csp_block(x, 16, 3, 1, bn=bn, activation='relu')
-        output_layer = self.output_layer(x, input_layer, name='i2i_output')
+
+        if self.output_scale == 1:
+            output_layer = self.output_layer(x, input_layer, name='i2i_output')
+        else:
+            if dts:
+                output_channels = self.output_shape[-1] * self.output_scale * self.output_scale
+                x = self.conv2d(x, output_channels, 1, 1, bn=bn, activation='sigmoid')
+                # use hard-coded constant for avoiding Not JSON Serializable error at onnx conversion
+                if self.output_scale == 2:
+                    output_layer = tf.keras.layers.Lambda(lambda x: tf.nn.depth_to_space(x, 2), name='i2i_output')(x)
+                else:
+                    output_layer = tf.keras.layers.Lambda(lambda x: tf.nn.depth_to_space(x, 4), name='i2i_output')(x)
+            else:
+                if self.output_scale >= 2:
+                    x = self.upsampling2d(x)
+                    x = self.conv2d(x, 8, 3, 1, bn=bn, activation='relu')
+                    x = self.conv2d(x, 8, 3, 1, bn=bn, activation='relu')
+                if self.output_scale >= 4:
+                    x = self.upsampling2d(x)
+                    x = self.conv2d(x, 4, 3, 1, bn=bn, activation='relu')
+                    x = self.conv2d(x, 4, 3, 1, bn=bn, activation='relu')
+                output_layer = self.output_layer(x, input_layer, name='i2i_output')
         return tf.keras.models.Model(input_layer, output_layer)
 
     def output_layer(self, x, input_layer, bn=False, additive=False, name='i2i_output'):
         if additive:
-            assert self.input_channels == self.output_channels
-            x = self.conv2d(x, self.input_channels, 1, 1, bn=bn, activation='linear')
+            assert self.input_shape == self.output_shape
+            x = self.conv2d(x, self.input_shape[-1], 1, 1, bn=bn, activation='linear')
             x = self.add([x, input_layer], name=name)
         else:
-            x = self.conv2d(x, self.output_channels, 1, 1, bn=bn, activation='sigmoid')
+            x = self.conv2d(x, self.output_shape[-1], 1, 1, bn=bn, activation='sigmoid')
         return x
 
     def csp_block(self, x, filters, kernel_size, depth, bn=False, activation='relu'):

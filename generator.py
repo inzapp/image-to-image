@@ -37,19 +37,15 @@ class DataGenerator:
     def __init__(self,
                  image_paths_x,
                  image_paths_y,
-                 input_rows,
-                 input_cols,
-                 input_channels,
-                 output_channels,
+                 input_shape,
+                 output_shape,
                  batch_size,
                  nv12=False,
                  dtype='float32'):
         self.image_paths_y = image_paths_y
         self.image_paths_x = image_paths_x
-        self.input_rows = input_rows
-        self.input_cols = input_cols
-        self.input_channels = input_channels
-        self.output_channels = output_channels
+        self.input_shape = input_shape
+        self.output_shape = output_shape
         self.batch_size = batch_size
         self.nv12 = nv12
         self.dtype = dtype
@@ -74,29 +70,30 @@ class DataGenerator:
 
     def preprocess(self, img, image_type):
         assert image_type in ['x', 'y']
-        channels = self.input_channels if image_type == 'x' else self.output_channels
+        target_shape = self.input_shape if image_type == 'x' else self.output_shape
+        channels = target_shape[-1]
         if self.nv12:
             channels = 1
-            input_rows_for_nv12 = self.input_rows // 3 * 2
-            img = self.resize(img, (self.input_cols, input_rows_for_nv12))
+            target_rows_for_nv12 = target_shape[0] // 3 * 2
+            img = self.resize(img, (target_shape[1], target_rows_for_nv12))
             img = self.convert_bgr2yuv420sp(img)
         else:
-            img = self.resize(img, (self.input_cols, self.input_rows))
+            img = self.resize(img, (target_shape[1], target_shape[0]))
             if channels == 3:
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        x = np.asarray(img).reshape((self.input_rows, self.input_cols, channels)).astype(self.dtype) / 255.0
+        x = np.asarray(img).reshape(target_shape).astype(self.dtype) / 255.0
         return x
 
     def postprocess(self, y):
         img = np.asarray(np.clip((y * 255.0), 0.0, 255.0)).astype('uint8')
         if self.nv12:
-            input_rows_for_nv12 = self.input_rows // 3 * 2
+            output_rows_for_nv12 = self.output_shape[0] // 3 * 2
             img = self.convert_yuv420sp2bgr(img)
-            img = img.reshape((input_rows_for_nv12, self.input_cols, 3))
+            img = img.reshape((output_rows_for_nv12, self.output_shape[1], 3))
         else:
-            if self.output_channels == 3:
+            if self.output_shape[-1] == 3:
                 img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-            img = img.reshape((self.input_rows, self.input_cols, self.output_channels))
+            img = img.reshape(self.output_shape)
         return img
 
     def key(self, image_path, image_type):
@@ -173,7 +170,7 @@ class DataGenerator:
         if self.nv12:
             img = cv2.imdecode(data, cv2.IMREAD_COLOR)
         else:
-            channels = self.input_channels if image_type == 'x' else self.output_channels
+            channels = self.input_shape[-1] if image_type == 'x' else self.output_shape[-1]
             img = cv2.imdecode(data, cv2.IMREAD_GRAYSCALE if channels == 1 else cv2.IMREAD_COLOR)
         return img
 
