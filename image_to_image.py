@@ -128,6 +128,7 @@ class ImageToImage(CheckpointManager):
             self.input_shape = self.model.input_shape[1:]
             self.output_shape = self.model.output_shape[1:]
             self.pretrained_iteration_count = self.parse_pretrained_iteration_count(self.pretrained_model_path)
+            self.nv12 = self.pretrained_model_path.find('nv12') > -1
         else:
             self.model = Model(
                 input_shape=self.input_shape,
@@ -372,6 +373,7 @@ class ImageToImage(CheckpointManager):
         self.model.summary()
         print(f'\ntrain on {len(self.train_image_paths_y)} gt, {len(self.train_image_paths_x)} input samples.')
         print('start training')
+        nv12_content = '_nv12' if self.nv12 else ''
         self.init_checkpoint_dir()
         iteration_count = self.pretrained_iteration_count
         optimizer = tf.keras.optimizers.Adam(learning_rate=self.lr)
@@ -388,10 +390,11 @@ class ImageToImage(CheckpointManager):
             if self.training_view:
                 self.training_view_function()
             if iteration_count % 2000 == 0:
-                self.save_last_model(self.model, iteration_count)
+                self.save_last_model(self.model, iteration_count, content=nv12_content)
             if iteration_count % self.save_interval == 0:
                 psnr, ssim = self.evaluate()
-                self.save_best_model(self.model, iteration_count, content=f'psnr_{psnr:.2f}_ssim_{ssim:.4f}', metric=psnr)
+                content = f'_psnr_{psnr:.2f}_ssim_{ssim:.4f}{nv12_content}'
+                self.save_best_model(self.model, iteration_count, content=content, metric=psnr)
             if iteration_count == self.iterations:
                 print('train end successfully')
                 return
