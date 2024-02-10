@@ -40,7 +40,7 @@ class DataGenerator:
                  input_shape,
                  output_shape,
                  batch_size,
-                 nv12=False,
+                 nv12,
                  dtype='float32'):
         self.image_paths_y = image_paths_y
         self.image_paths_x = image_paths_x

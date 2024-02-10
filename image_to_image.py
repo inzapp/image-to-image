@@ -58,6 +58,7 @@ class TrainingConfig:
                  iterations,
                  save_interval,
                  pretrained_model_path='',
+                 nv12=False,
                  training_view=False):
         self.train_image_path = train_image_path
         self.validation_image_path = validation_image_path
@@ -70,6 +71,7 @@ class TrainingConfig:
         self.iterations = iterations
         self.save_interval = save_interval
         self.pretrained_model_path = pretrained_model_path
+        self.nv12 = nv12
         self.training_view = training_view
 
 
@@ -83,6 +85,9 @@ class ImageToImage(CheckpointManager):
         assert config.output_shape[0] % 32 == 0
         assert config.output_shape[1] % 32 == 0
         assert config.output_shape[2] in [1, 3]
+        if config.nv12:
+            assert config.input_shape[-1] == 1, 'input channels must be 1 if use nv12 format'
+            assert config.output_shape[-1] == 1, 'output channels must be 1 if use nv12 format'
         self.train_image_path = config.train_image_path
         self.validation_image_path = config.validation_image_path
         self.input_shape = config.input_shape
@@ -94,6 +99,7 @@ class ImageToImage(CheckpointManager):
         self.iterations = config.iterations
         self.save_interval = config.save_interval
         self.pretrained_model_path = config.pretrained_model_path
+        self.nv12 = config.nv12
         self.training_view = config.training_view
 
         warnings.filterwarnings(action='ignore')
@@ -131,13 +137,15 @@ class ImageToImage(CheckpointManager):
             image_paths_y=self.train_image_paths_y,
             input_shape=self.input_shape,
             output_shape=self.output_shape,
-            batch_size=self.batch_size)
+            batch_size=self.batch_size,
+            nv12=self.nv12)
         self.validation_data_generator = DataGenerator(
             image_paths_x=self.validation_image_paths_x,
             image_paths_y=self.validation_image_paths_y,
             input_shape=self.input_shape,
             output_shape=self.output_shape,
-            batch_size=1)
+            batch_size=1,
+            nv12=self.nv12)
 
     def set_global_seed(self, seed=42):
         random.seed(seed)
@@ -176,6 +184,18 @@ class ImageToImage(CheckpointManager):
     def graph_forward(self, model, x):
         return model(x, training=False)
 
+    def concat(self, images):
+        need_gray_to_bgr = self.input_shape[-1] != self.output_shape[-1]
+        for i in range(len(images)):
+            if len(images[i].shape) == 2:
+                images[i] = images[i].reshape(images[i].shape + (1,))
+            if need_gray_to_bgr and images[i].shape[-1] == 1:
+                images[i] = cv2.cvtColor(images[i], cv2.COLOR_GRAY2BGR)
+            image_h, image_w = images[i].shape[:2]
+            if image_h != self.output_shape[0] and image_w != self.output_shape[1]:
+                images[i] = self.train_data_generator.resize(images[i], (self.output_shape[1], self.output_shape[0]))
+        return np.concatenate(images, axis=1)
+
     def predict_images(self, image_path='', dataset='validation', save_count=0, predict_gt=False):
         image_paths_y, image_paths_x = [], []
         if image_path != '':
@@ -208,7 +228,8 @@ class ImageToImage(CheckpointManager):
             image_paths_y=image_paths_y,
             input_shape=self.input_shape,
             output_shape=self.output_shape,
-            batch_size=self.batch_size)
+            batch_size=self.batch_size,
+            nv12=self.nv12)
 
         cnt = 0
         save_path = 'result_images'
@@ -334,18 +355,6 @@ class ImageToImage(CheckpointManager):
             if iteration_count == self.iterations:
                 print('\ntrain end successfully')
                 return
-
-    def concat(self, images):
-        need_gray_to_bgr = self.input_shape[-1] != self.output_shape[-1]
-        for i in range(len(images)):
-            if len(images[i].shape) == 2:
-                images[i] = images[i].reshape(images[i].shape + (1,))
-            if need_gray_to_bgr and images[i].shape[-1] == 1:
-                images[i] = cv2.cvtColor(images[i], cv2.COLOR_GRAY2BGR)
-            image_h, image_w = images[i].shape[:2]
-            if image_h != self.output_shape[0] and image_w != self.output_shape[1]:
-                images[i] = self.train_data_generator.resize(images[i], (self.output_shape[1], self.output_shape[0]))
-        return np.concatenate(images, axis=1)
 
     def predict(self, img_x):
         x = self.train_data_generator.preprocess(img_x, image_type='x')
