@@ -174,8 +174,12 @@ class DataGenerator:
             img = cv2.imdecode(data, cv2.IMREAD_GRAYSCALE if channels == 1 else cv2.IMREAD_COLOR)
         return img
 
-    def load_image_x(self, path_y):
-        return self.load_image(self.get_x_path_of(path_y), image_type='x')
+    def load_image_x(self, path_y, no_x=False):
+        if no_x:
+            img = self.load_image(path_y, image_type='x')
+        else:
+            img = self.load_image(self.get_x_path_of(path_y), image_type='x')
+        return img
 
     def load_image_y(self, path_y):
         return self.load_image(path_y, image_type='y')

@@ -205,62 +205,6 @@ class ImageToImage(CheckpointManager):
         img_pred = self.train_data_generator.postprocess(np.array(self.graph_forward(self.model, x)[0]))
         return img_pred
 
-    def predict_images(self, image_path='', dataset='validation', save_count=0, predict_gt=False):
-        image_paths_y, image_paths_x = [], []
-        if image_path != '':
-            if not os.path.exists(image_path):
-                print(f'image path not found : {image_path}')
-                return
-            if os.path.isdir(image_path):
-                image_paths_x, image_paths_y = self.init_image_paths(image_path)
-            else:
-                image_paths_x, image_paths_y = [], [image_path]
-        else:
-            assert dataset in ['train', 'validation']
-            if dataset == 'train':
-                image_paths_x = self.train_image_paths_x
-                image_paths_y = self.train_image_paths_y
-            else:
-                image_paths_x = self.validation_image_paths_x
-                image_paths_y = self.validation_image_paths_y
-
-        if predict_gt:
-            image_paths_y += image_paths_x
-            image_paths_x = []
-
-        if len(image_paths_y) == 0:
-            print(f'no images found')
-            return
-
-        data_generator = DataGenerator(
-            image_paths_x=image_paths_x,
-            image_paths_y=image_paths_y,
-            input_shape=self.input_shape,
-            output_shape=self.output_shape,
-            batch_size=self.batch_size,
-            nv12=self.nv12)
-
-        cnt = 0
-        save_path = 'result_images'
-        os.makedirs(save_path, exist_ok=True)
-        for path in image_paths_y:
-            img_x = data_generator.load_image_y(path) if predict_gt else data_generator.load_image_x(path)
-            img_pred = self.predict(img_x)
-            img_concat = self.concat([img_x, img_pred])
-            if save_count > 0:
-                basename = os.path.basename(path)
-                save_img_path = f'{save_path}/{basename}'
-                cv2.imwrite(save_img_path, img_concat, [cv2.IMWRITE_JPEG_QUALITY, 100])
-                cnt += 1
-                print(f'[{cnt} / {save_count}] save success : {save_img_path}')
-                if cnt == save_count:
-                    break
-            else:
-                cv2.imshow('img_pred', img_concat)
-                key = cv2.waitKey(0)
-                if key == 27:
-                    exit(0)
-
     def predict_video(self, video_path):
         if not (os.path.exists(video_path) and os.path.isfile(video_path)):
             print(f'video not found. video video_path : {video_path}')
@@ -336,38 +280,6 @@ class ImageToImage(CheckpointManager):
         loss_str += f' loss : {loss:>8.4f}'
         print(loss_str, end='')
 
-    def train(self):
-        self.exit_if_no_images(self.train_image_paths_x, self.train_image_path)
-        self.exit_if_no_images(self.train_image_paths_y, self.train_image_path)
-        self.exit_if_no_images(self.validation_image_paths_x, self.validation_image_path)
-        self.exit_if_no_images(self.validation_image_paths_y, self.validation_image_path)
-        self.model.summary()
-        print(f'\ntrain on {len(self.train_image_paths_y)} gt, {len(self.train_image_paths_x)} input samples.')
-        print('start training')
-        self.init_checkpoint_dir()
-        iteration_count = self.pretrained_iteration_count
-        optimizer = tf.keras.optimizers.Adam(learning_rate=self.lr)
-        lr_scheduler = LRScheduler(lr=self.lr, iterations=self.iterations, warm_up=self.warm_up, policy='step')
-        eta_calculator = ETACalculator(iterations=self.iterations)
-        eta_calculator.start()
-        while True:
-            batch_x, batch_y = self.train_data_generator.load()
-            lr_scheduler.update(optimizer, iteration_count)
-            loss = self.compute_gradient(self.model, optimizer, batch_x, batch_y)
-            iteration_count += 1
-            progress_str = eta_calculator.update(iteration_count)
-            self.print_loss(progress_str, loss)
-            if self.training_view:
-                self.training_view_function()
-            if iteration_count % 2000 == 0:
-                self.save_last_model(self.model, iteration_count)
-            if iteration_count % self.save_interval == 0:
-                psnr, ssim = self.evaluate()
-                self.save_best_model(self.model, iteration_count, content=f'psnr_{psnr:.2f}_ssim_{ssim:.4f}', metric=psnr)
-            if iteration_count == self.iterations:
-                print('\ntrain end successfully')
-                return
-
     def psnr(self, img_a, img_b, max_val):
         mse = np.mean((img_a.astype('float32') - img_b.astype('float32')) ** 2.0)
         return 20 * np.log10(max_val / np.sqrt(mse)) if mse!= 0.0 else 100.0
@@ -407,25 +319,82 @@ class ImageToImage(CheckpointManager):
             batch_size=self.batch_size,
             nv12=self.nv12)
 
+        if save_count > 0:
+            save_path = 'result_images'
+            os.makedirs(save_path, exist_ok=True)
+
         print()
+        count = 0
         psnr_sum = 0.0
         ssim_sum = 0.0
-        for path in tqdm(image_paths_y):
-            img_x = data_generator.load_image_x(path)
+        show_or_save_images = show or save_count > 0
+        paths = image_paths_y if show_or_save_images else tqdm(image_paths_y)
+        for path in paths:
+            img_x = data_generator.load_image_x(path, no_x=no_x)
             img_y = data_generator.load_image_y(path)
             img_pred = self.predict(img_x)
             img_pred_h, img_pred_w = img_pred.shape[:2]
             img_y = data_generator.resize(img_y, (img_pred_w, img_pred_h))
             img_y = img_y.reshape((img_pred_h, img_pred_w, -1))
             img_pred = img_pred.reshape((img_pred_h, img_pred_w, -1))
+            if show_or_save_images:
+                img_x = data_generator.resize(img_x, (img_pred_w, img_pred_h))
+                img_x = img_x.reshape((img_pred_h, img_pred_w, -1))
+                img_concat = self.concat([img_x, img_pred])
+                if show:
+                    cv2.imshow('img', img_concat)
+                    key = cv2.waitKey(0)
+                    if key == 27:
+                        exit(0)
+                if save_count > 0:
+                    basename = os.path.basename(path)
+                    save_img_path = f'{save_path}/{basename}'
+                    cv2.imwrite(save_img_path, img_concat, [cv2.IMWRITE_JPEG_QUALITY, 100])
+                    count += 1
+                    print(f'[{count} / {save_count}] save success : {save_img_path}')
+                    if count == save_count:
+                        exit(0)
             psnr = self.psnr(img_y, img_pred, 255.0)
             ssim = tf.image.ssim(img_y, img_pred, 255.0)
             psnr_sum += psnr
             ssim_sum += ssim
-        avg_psnr = psnr_sum / float(len(image_paths_y))
-        avg_ssim = ssim_sum / float(len(image_paths_y))
-        print(f'psnr : {avg_psnr:.2f}, ssim : {avg_ssim:.4f}')
+        if not show_or_save_images:
+            avg_psnr = psnr_sum / float(len(image_paths_y))
+            avg_ssim = ssim_sum / float(len(image_paths_y))
+            print(f'psnr : {avg_psnr:.2f}, ssim : {avg_ssim:.4f}\n')
         return avg_psnr, avg_ssim
+
+    def train(self):
+        self.exit_if_no_images(self.train_image_paths_x, self.train_image_path)
+        self.exit_if_no_images(self.train_image_paths_y, self.train_image_path)
+        self.exit_if_no_images(self.validation_image_paths_x, self.validation_image_path)
+        self.exit_if_no_images(self.validation_image_paths_y, self.validation_image_path)
+        self.model.summary()
+        print(f'\ntrain on {len(self.train_image_paths_y)} gt, {len(self.train_image_paths_x)} input samples.')
+        print('start training')
+        self.init_checkpoint_dir()
+        iteration_count = self.pretrained_iteration_count
+        optimizer = tf.keras.optimizers.Adam(learning_rate=self.lr)
+        lr_scheduler = LRScheduler(lr=self.lr, iterations=self.iterations, warm_up=self.warm_up, policy='step')
+        eta_calculator = ETACalculator(iterations=self.iterations)
+        eta_calculator.start()
+        while True:
+            batch_x, batch_y = self.train_data_generator.load()
+            lr_scheduler.update(optimizer, iteration_count)
+            loss = self.compute_gradient(self.model, optimizer, batch_x, batch_y)
+            iteration_count += 1
+            progress_str = eta_calculator.update(iteration_count)
+            self.print_loss(progress_str, loss)
+            if self.training_view:
+                self.training_view_function()
+            if iteration_count % 2000 == 0:
+                self.save_last_model(self.model, iteration_count)
+            if iteration_count % self.save_interval == 0:
+                psnr, ssim = self.evaluate()
+                self.save_best_model(self.model, iteration_count, content=f'psnr_{psnr:.2f}_ssim_{ssim:.4f}', metric=psnr)
+            if iteration_count == self.iterations:
+                print('train end successfully')
+                return
 
     def training_view_function(self):
         cur_time = time()
