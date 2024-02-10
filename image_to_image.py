@@ -124,8 +124,9 @@ class ImageToImage(CheckpointManager):
             if not (os.path.exists(self.pretrained_model_path) and os.path.isfile(self.pretrained_model_path)):
                 print(f'file not found : {model_path}')
                 exit(0)
-            model = tf.keras.models.load_model(self.pretrained_model_path, compile=False, custom_objects={'tf': tf})
-            self.input_shape = model.input_shape[1:]
+            self.model = tf.keras.models.load_model(self.pretrained_model_path, compile=False, custom_objects={'tf': tf})
+            self.input_shape = self.model.input_shape[1:]
+            self.output_shape = self.model.output_shape[1:]
             self.pretrained_iteration_count = self.parse_pretrained_iteration_count(self.pretrained_model_path)
         else:
             self.model = Model(
@@ -194,7 +195,15 @@ class ImageToImage(CheckpointManager):
             image_h, image_w = images[i].shape[:2]
             if image_h != self.output_shape[0] and image_w != self.output_shape[1]:
                 images[i] = self.train_data_generator.resize(images[i], (self.output_shape[1], self.output_shape[0]))
+            if len(images[i].shape) == 2:
+                images[i] = images[i].reshape(images[i].shape + (1,))
         return np.concatenate(images, axis=1)
+
+    def predict(self, img_x):
+        x = self.train_data_generator.preprocess(img_x, image_type='x')
+        x = x.reshape((1,) + x.shape)
+        img_pred = self.train_data_generator.postprocess(np.array(self.graph_forward(self.model, x)[0]))
+        return img_pred
 
     def predict_images(self, image_path='', dataset='validation', save_count=0, predict_gt=False):
         image_paths_y, image_paths_x = [], []
@@ -352,20 +361,18 @@ class ImageToImage(CheckpointManager):
                 self.training_view_function()
             if iteration_count % 2000 == 0:
                 self.save_last_model(self.model, iteration_count)
+            if iteration_count % self.save_interval == 0:
+                psnr, ssim = self.evaluate()
+                self.save_best_model(self.model, iteration_count, content=f'psnr_{psnr:.2f}_ssim_{ssim:.4f}', metric=psnr)
             if iteration_count == self.iterations:
                 print('\ntrain end successfully')
                 return
 
-    def predict(self, img_x):
-        x = self.train_data_generator.preprocess(img_x, image_type='x')
-        x = x.reshape((1,) + x.shape)
-        img_pred = self.train_data_generator.postprocess(np.array(self.graph_forward(self.model, x)[0]))
-        return img_pred
-
-    def psnr(self, mse, max_val=255.0):
+    def psnr(self, img_a, img_b, max_val):
+        mse = np.mean((img_a.astype('float32') - img_b.astype('float32')) ** 2.0)
         return 20 * np.log10(max_val / np.sqrt(mse)) if mse!= 0.0 else 100.0
 
-    def evaluate(self, dataset='validation', image_path='', evaluate_gt=False, nv12=False):
+    def evaluate(self, dataset='validation', image_path='', show=False, save_count=0, no_x=False):
         image_paths_y, image_paths_x = [], []
         if image_path != '':
             if not os.path.exists(image_path):
@@ -384,7 +391,7 @@ class ImageToImage(CheckpointManager):
                 image_paths_x = self.validation_image_paths_x
                 image_paths_y = self.validation_image_paths_y
 
-        if predict_gt:
+        if no_x:
             image_paths_y += image_paths_x
             image_paths_x = []
 
@@ -397,22 +404,28 @@ class ImageToImage(CheckpointManager):
             image_paths_y=image_paths_y,
             input_shape=self.input_shape,
             output_shape=self.output_shape,
-            batch_size=1,
-            nv12=nv12)
+            batch_size=self.batch_size,
+            nv12=self.nv12)
 
+        print()
         psnr_sum = 0.0
         ssim_sum = 0.0
         for path in tqdm(image_paths_y):
             img_x = data_generator.load_image_x(path)
             img_y = data_generator.load_image_y(path)
             img_pred = self.predict(img_x)
-            psnr = self.psnr(np.mean((img_y.astype('float32') - img_pred.astype('float32')) ** 2.0))
+            img_pred_h, img_pred_w = img_pred.shape[:2]
+            img_y = data_generator.resize(img_y, (img_pred_w, img_pred_h))
+            img_y = img_y.reshape((img_pred_h, img_pred_w, -1))
+            img_pred = img_pred.reshape((img_pred_h, img_pred_w, -1))
+            psnr = self.psnr(img_y, img_pred, 255.0)
             ssim = tf.image.ssim(img_y, img_pred, 255.0)
             psnr_sum += psnr
             ssim_sum += ssim
         avg_psnr = psnr_sum / float(len(image_paths_y))
         avg_ssim = ssim_sum / float(len(image_paths_y))
-        print(f'\npsnr : {avg_psnr:.2f}, ssim : {avg_ssim:.4f}')
+        print(f'psnr : {avg_psnr:.2f}, ssim : {avg_ssim:.4f}')
+        return avg_psnr, avg_ssim
 
     def training_view_function(self):
         cur_time = time()

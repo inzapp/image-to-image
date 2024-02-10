@@ -44,35 +44,24 @@ if __name__ == '__main__':
         training_view=False)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--rows', type=int, default=0, help='input rows for model')
-    parser.add_argument('--cols', type=int, default=0, help='input cols for model')
-    parser.add_argument('--model', type=str, default='', help='pretrained model path')
-    parser.add_argument('--type', type=str, default='', help='pretrained model input type : [gray, rgb, nv12, nv21]')
-    parser.add_argument('--predict', action='store_true', help='predict using given x dataset')
-    parser.add_argument('--predict-gt', action='store_true', help='predict using given gt dataset')
     parser.add_argument('--evaluate', action='store_true', help='evaluate using given dataset')
-    parser.add_argument('--evaluate-gt', action='store_true', help='evaluate using given dataset without model forwarding')
+    parser.add_argument('--model', type=str, default='', help='pretrained model path')
     parser.add_argument('--dataset', type=str, default='validation', help='dataset for evaluate, train or validation available')
     parser.add_argument('--path', type=str, default='', help='image or video path for prediction or evaluation')
     parser.add_argument('--save-count', type=int, default=0, help='count for save images')
+    parser.add_argument('--show', action='store_true', help='show predicted images instead evaluate')
+    parser.add_argument('--no-x', action='store_true', help='predict using given gt dataset as no x pair')
     args = parser.parse_args()
-    if args.rows > 0 and args.cols > 0:
-        config.input_rows = args.rows
-        config.input_cols = args.cols
     if args.model != '':
         config.pretrained_model_path = args.model
-    if args.type != '':
-        config.input_type = args.type
-    image_to_image = ImageToImage(config=config, training=not (args.predict or args.predict_gt or args.evaluate or args.evaluate_gt))
-    if args.predict or args.predict_gt:
+    image_to_image = ImageToImage(config=config, training=not args.evaluate)
+    if args.evaluate:
         if args.path.endswith('.mp4'):
             image_to_image.predict_video(video_path=args.path)
         elif args.path.startswith('rtsp://'):
             image_to_image.predict_rtsp(rtsp_url=args.path)
         else:
-            image_to_image.predict_images(image_path=args.path, dataset=args.dataset, save_count=args.save_count, predict_gt=args.predict_gt)
-    elif args.evaluate or args.evaluate_gt:
-        image_to_image.evaluate(image_path=args.path, dataset=args.dataset, evaluate_gt=args.evaluate_gt)
+            image_to_image.evaluate(dataset=args.dataset, image_path=args.path, show=args.show, save_count=args.save_count, no_x=args.no_x)
     else:
         image_to_image.train()
 
