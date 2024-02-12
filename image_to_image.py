@@ -55,6 +55,7 @@ class TrainingConfig:
                  lr,
                  warm_up,
                  batch_size,
+                 unet_depth,
                  iterations,
                  save_interval,
                  pretrained_model_path='',
@@ -68,6 +69,7 @@ class TrainingConfig:
         self.lr = lr
         self.warm_up = warm_up
         self.batch_size = batch_size
+        self.unet_depth = unet_depth
         self.iterations = iterations
         self.save_interval = save_interval
         self.pretrained_model_path = pretrained_model_path
@@ -96,6 +98,7 @@ class ImageToImage(CheckpointManager):
         self.lr = config.lr
         self.warm_up = config.warm_up
         self.batch_size = config.batch_size
+        self.unet_depth = config.unet_depth
         self.iterations = config.iterations
         self.save_interval = config.save_interval
         self.pretrained_model_path = config.pretrained_model_path
@@ -132,7 +135,7 @@ class ImageToImage(CheckpointManager):
         else:
             self.model = Model(
                 input_shape=self.input_shape,
-                output_shape=self.output_shape).build()
+                output_shape=self.output_shape).build(unet_depth=self.unet_depth)
 
         self.train_data_generator = DataGenerator(
             image_paths_x=self.train_image_paths_x,
@@ -164,10 +167,11 @@ class ImageToImage(CheckpointManager):
             exit(0)
 
     def init_image_paths(self, image_path):
+        from x_data_generator import X_KEYWORD
         paths_all = glob(f'{image_path}/**/*.jpg', recursive=True)
         paths_x, paths_y = [], []
         for path in paths_all:
-            if os.path.basename(path).find('_I2IX_') > -1:
+            if os.path.basename(path).find(f'_{X_KEYWORD}_') > -1:
                 paths_x.append(path)
             else:
                 paths_y.append(path)

@@ -39,6 +39,7 @@ if __name__ == '__main__':
         lr=0.001,
         warm_up=0.5,
         batch_size=8,
+        unet_depth=2,
         iterations=100000,
         save_interval=10000,
         training_view=False)

@@ -33,6 +33,7 @@ class Model:
         self.input_shape = input_shape
         self.output_shape = output_shape
         self.output_scale = self.calc_output_scale(self.input_shape, self.output_shape)
+        self.infos = [[16, 1], [32, 1], [64, 2], [128, 2], [256, 2], [256, 2]]
 
     def calc_output_scale(self, input_shape, output_shape):
         min_rows = min(input_shape[0], output_shape[0])
@@ -48,24 +49,26 @@ class Model:
         assert output_scale in [1, 2, 4]
         return output_scale
 
-    def build(self, bn=False, dts=True):
+    def build(self, unet_depth, bn=False, dts=True, activation='relu'):
         input_layer = tf.keras.layers.Input(shape=self.input_shape, name='i2i_input')
         x = input_layer
-        x = self.conv2d(x, 16, 3, 1, bn=bn, activation='relu')
-        f0 = x
-        x = self.maxpooling2d(x)
-        x = self.csp_block(x, 32, 3, 2, bn=bn, activation='relu')
-        f1 = x
-        x = self.maxpooling2d(x)
-        x = self.csp_block(x, 64, 3, 3, bn=bn, activation='relu')
-        x = self.conv2d(x, 32, 1, 1, bn=bn, activation='relu')
-        x = self.upsampling2d(x)
-        x = self.add([x, f1])
-        x = self.csp_block(x, 32, 3, 2, bn=bn, activation='relu')
-        x = self.conv2d(x, 16, 1, 1, bn=bn, activation='relu')
-        x = self.upsampling2d(x)
-        x = self.add([x, f0])
-        x = self.csp_block(x, 16, 3, 1, bn=bn, activation='relu')
+        xs = []
+        channels, n_convs = self.infos[0]
+        for _ in range(n_convs):
+            x = self.conv2d(x, channels, 3, 1, bn=bn, activation=activation)
+        for i in range(unet_depth):
+            xs.append(x)
+            x = self.maxpooling2d(x)
+            channels, n_convs = self.infos[i+1]
+            for _ in range(n_convs):
+                x = self.conv2d(x, channels, 3, 1, bn=bn, activation=activation)
+        for i in range(unet_depth, 0, -1):
+            channels, n_convs = self.infos[i-1]
+            x = self.conv2d(x, channels, 1, 1, bn=bn, activation=activation)
+            x = self.upsampling2d(x)
+            x = self.add([x, xs.pop()])
+            for _ in range(n_convs):
+                x = self.conv2d(x, channels, 3, 1, bn=bn, activation=activation)
 
         if self.output_scale == 1:
             output_layer = self.output_layer(x, input_layer, name='i2i_output')
