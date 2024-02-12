@@ -80,12 +80,13 @@ class TrainingConfig:
 class ImageToImage(CheckpointManager):
     def __init__(self, config, training):
         super().__init__()
+        max_stride = 2 ** config.unet_depth
         assert config.save_interval >= 1000
-        assert config.input_shape[0] % 32 == 0
-        assert config.input_shape[1] % 32 == 0
+        assert config.input_shape[0] % max_stride == 0, f'input rows must be multiple of {max_stride}'
+        assert config.input_shape[1] % max_stride == 0, f'input cols must be multiple of {max_stride}'
         assert config.input_shape[2] in [1, 3]
-        assert config.output_shape[0] % 32 == 0
-        assert config.output_shape[1] % 32 == 0
+        assert config.output_shape[0] % max_stride == 0, f'output rows must be multiple of {max_stride}'
+        assert config.output_shape[1] % max_stride == 0, f'output cols must be multiple of {max_stride}'
         assert config.output_shape[2] in [1, 3]
         if config.nv12:
             assert config.input_shape[-1] == 1, 'input channels must be 1 if use nv12 format'
