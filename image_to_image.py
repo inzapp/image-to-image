@@ -143,7 +143,8 @@ class ImageToImage(CheckpointManager):
             input_shape=self.input_shape,
             output_shape=self.output_shape,
             batch_size=self.batch_size,
-            nv12=self.nv12)
+            nv12=self.nv12,
+            training=True)
         self.validation_data_generator = DataGenerator(
             image_paths_x=self.validation_image_paths_x,
             image_paths_y=self.validation_image_paths_y,

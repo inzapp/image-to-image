@@ -41,17 +41,17 @@ class DataGenerator:
                  output_shape,
                  batch_size,
                  nv12,
-                 dtype='float32'):
+                 training=False):
         self.image_paths_y = image_paths_y
         self.image_paths_x = image_paths_x
         self.input_shape = input_shape
         self.output_shape = output_shape
         self.batch_size = batch_size
         self.nv12 = nv12
-        self.dtype = dtype
+        self.training = training
 
-        self.pool = ThreadPoolExecutor(8)
         self.img_index = 0
+        self.pool = ThreadPoolExecutor(8)
         self.x_image_paths_of = self.get_x_image_paths_of(self.image_paths_y, self.image_paths_x)
         np.random.shuffle(self.image_paths_y)
 
@@ -64,8 +64,8 @@ class DataGenerator:
             img_x, img_y = f.result()
             batch_x.append(self.preprocess(img_x, image_type='x'))
             batch_y.append(self.preprocess(img_y, image_type='y'))
-        batch_x = np.asarray(batch_x).astype(self.dtype)
-        batch_y = np.asarray(batch_y).astype(self.dtype)
+        batch_x = np.asarray(batch_x).astype(np.float32)
+        batch_y = np.asarray(batch_y).astype(np.float32)
         return batch_x, batch_y
 
     def preprocess(self, img, image_type):
@@ -81,7 +81,7 @@ class DataGenerator:
             img = self.resize(img, (target_shape[1], target_shape[0]))
             if channels == 3:
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        x = np.asarray(img).reshape(target_shape).astype(self.dtype) / 255.0
+        x = np.asarray(img).reshape(target_shape).astype(np.float32) / 255.0
         return x
 
     def postprocess(self, y):
@@ -162,7 +162,8 @@ class DataGenerator:
         return cv2.cvtColor(img, conversion_type)
 
     def get_x_path_of(self, path_y):
-        return np.random.choice(self.x_image_paths_of[self.key(path_y, 'y')])
+        x_paths = self.x_image_paths_of[self.key(path_y, 'y')]
+        return np.random.choice(x_paths) if self.training else x_paths[0]
 
     def load_image(self, path, image_type):
         assert image_type in ['x', 'y']
