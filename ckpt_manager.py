@@ -70,7 +70,7 @@ class CheckpointManager:
         print(f'checkpoint path : {self.checkpoint_path}')
 
     def remove_last_model(self):
-        for last_model_path in glob(f'{self.checkpoint_path}/last_*_iter.h5'):
+        for last_model_path in glob(f'{self.checkpoint_path}/last_*.h5'):
             os.remove(last_model_path)
 
     def save_last_model(self, model, iteration_count, content=''):
