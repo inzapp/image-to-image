@@ -372,9 +372,7 @@ class ImageToImage(CheckpointManager):
         return avg_psnr, avg_ssim
 
     def train(self):
-        self.exit_if_no_images(self.train_image_paths_x, self.train_image_path)
         self.exit_if_no_images(self.train_image_paths_y, self.train_image_path)
-        self.exit_if_no_images(self.validation_image_paths_x, self.validation_image_path)
         self.exit_if_no_images(self.validation_image_paths_y, self.validation_image_path)
         self.model.summary()
         print(f'\ntrain on {len(self.train_image_paths_y)} gt, {len(self.train_image_paths_x)} input samples.')
