@@ -109,6 +109,9 @@ class DataGenerator:
             x_image_paths_of[self.key(path, 'y')] = []
         for path in image_paths_x:
             x_image_paths_of[self.key(path, 'x')].append(path)
+        for path in image_paths_y:
+            if len(x_image_paths_of[self.key(path, 'y')]) == 0:
+                x_image_paths_of[self.key(path, 'y')].append(path)
         return x_image_paths_of
 
     def next_image_path(self):
