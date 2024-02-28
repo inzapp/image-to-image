@@ -338,6 +338,7 @@ class ImageToImage(CheckpointManager):
         paths = image_paths_y if show_or_save_images else tqdm(image_paths_y)
         for path in paths:
             img_x = data_generator.load_image_x(path, no_x=no_x)
+            img_x = data_generator.resize(img_x, (self.input_shape[1], self.input_shape[0]))
             img_y = data_generator.load_image_y(path)
             img_pred = self.predict(img_x)
             img_pred_h, img_pred_w = img_pred.shape[:2]
