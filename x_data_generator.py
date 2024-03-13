@@ -145,13 +145,13 @@ class XDataGenerator:
             if not x_exists:
                 not_paired_y_paths.append(y_path)
 
+        print(f'y images : {len(y_paths)}')
+        print(f'x images : {len(x_paths)}')
         if len(not_paired_y_paths) == 0:
-            print('all images has x pairs at least once')
-            print(f'y images : {len(y_paths)}')
-            print(f'x images : {len(x_paths)}')
+            print('\nall images has x pairs at least once')
         else:
-            for path in not_paired_y_paths:
-                print(path)
+            # for path in not_paired_y_paths:
+            #     print(path)
             print(f'\nno x pair image count : {len(not_paired_y_paths)}')
 
     def rename(self, path):
