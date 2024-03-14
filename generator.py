@@ -125,17 +125,19 @@ class DataGenerator:
     def resize(self, img, size=(-1, -1), scale=1.0):
         interpolation = None
         img_h, img_w = img.shape[:2]
+        interpolation_upscaling = cv2.INTER_CUBIC
+        interpolation_downscaling = np.random.choice([cv2.INTER_LINEAR, cv2.INTER_AREA, cv2.INTER_CUBIC]) if self.training else cv2.INTER_AREA
         if scale != 1.0:
             if scale > 1.0:
-                interpolation = cv2.INTER_LINEAR
+                interpolation = interpolation_upscaling
             else:
-                interpolation = cv2.INTER_AREA
+                interpolation = interpolation_downscaling
             return cv2.resize(img, (0, 0), fx=scale, fy=scale, interpolation=interpolation)
         else:
             if size[0] > img_w or size[1] > img_h:
-                interpolation = cv2.INTER_LINEAR
+                interpolation = interpolation_upscaling
             else:
-                interpolation = cv2.INTER_AREA
+                interpolation = interpolation_downscaling
             return cv2.resize(img, size, interpolation=interpolation)
 
     def convert_bgr2yuv420sp(self, img, yuv_type='nv12'):
