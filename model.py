@@ -33,7 +33,7 @@ class Model:
         self.input_shape = input_shape
         self.output_shape = output_shape
         self.output_scale = self.calc_output_scale(self.input_shape, self.output_shape)
-        self.infos = [[16, 1], [32, 1], [64, 2], [128, 2], [256, 2], [256, 2]]
+        self.infos = None
 
     def calc_output_scale(self, input_shape, output_shape):
         min_rows = min(input_shape[0], output_shape[0])
@@ -50,6 +50,10 @@ class Model:
         return output_scale
 
     def build(self, unet_depth, bn=False, dts=True, activation='relu'):
+        if unet_depth == 0:
+            self.infos = [[32, 3]]
+        else:
+            self.infos = [[16, 1], [32, 1], [64, 2], [128, 2], [256, 2], [256, 2]]
         input_layer = tf.keras.layers.Input(shape=self.input_shape, name='i2i_input')
         x = input_layer
         xs = []
@@ -83,13 +87,9 @@ class Model:
                     output_layer = tf.keras.layers.Lambda(lambda x: tf.nn.depth_to_space(x, 4), name='i2i_output')(x)
             else:
                 if self.output_scale >= 2:
-                    x = self.upsampling2d(x)
-                    x = self.conv2d(x, 8, 3, 1, bn=bn, activation='relu')
-                    x = self.conv2d(x, 8, 3, 1, bn=bn, activation='relu')
+                    x = self.conv2dtranspose(x, max(self.infos[0][0]//2, 4), 4, 2, bn=bn, activation=activation)
                 if self.output_scale >= 4:
-                    x = self.upsampling2d(x)
-                    x = self.conv2d(x, 4, 3, 1, bn=bn, activation='relu')
-                    x = self.conv2d(x, 4, 3, 1, bn=bn, activation='relu')
+                    x = self.conv2dtranspose(x, max(self.infos[0][0]//4, 4), 4, 2, bn=bn, activation=activation)
                 output_layer = self.output_layer(x, input_layer, name='i2i_output')
         return tf.keras.models.Model(input_layer, output_layer)
 
@@ -115,6 +115,20 @@ class Model:
 
     def conv2d(self, x, filters, kernel_size, strides, bn=False, activation='relu', name=None):
         x = tf.keras.layers.Conv2D(
+            strides=strides,
+            filters=filters,
+            padding='same',
+            use_bias=not bn,
+            kernel_size=kernel_size,
+            kernel_initializer=self.kernel_initializer(),
+            kernel_regularizer=self.kernel_regularizer(),
+            name=name)(x)
+        if bn:
+            x = self.batch_normalization(x)
+        return self.activation(x, activation)
+
+    def conv2dtranspose(self, x, filters, kernel_size, strides, bn=False, activation='relu', name=None):
+        x = tf.keras.layers.Conv2DTranspose(
             strides=strides,
             filters=filters,
             padding='same',
