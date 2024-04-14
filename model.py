@@ -49,13 +49,31 @@ class Model:
         assert output_scale in [1, 2, 4]
         return output_scale
 
-    def build(self, unet_depth, bn=False, dts=True, activation='relu'):
+    def build(self, unet_depth, build_gan, g_model, d_model, bn=False, dts=True, activation='relu'):
+        if g_model is None:
+            g_input, g_output = self.build_g(unet_depth, bn, dts, activation)
+        else:
+            g_input, g_output = g_model.input, g_model.output
+        g_model = tf.keras.models.Model(g_input, g_output)
+
+        d_model, gan = None, None
+        if build_gan:
+            if d_model is None:
+                d_input, d_output = self.build_d(bn=False)
+            else:
+                d_input, d_output = d_model.input, d_model.output
+            d_model = tf.keras.models.Model(d_input, d_output)
+            gan_output = d_model(g_output)
+            gan = tf.keras.models.Model(g_input, gan_output)
+        return g_model, d_model, gan
+
+    def build_g(self, unet_depth, bn, dts, activation):
         if unet_depth == 0:
             self.infos = [[32, 3]]
         else:
             self.infos = [[16, 1], [32, 1], [64, 2], [128, 2], [256, 2], [256, 2]]
-        input_layer = tf.keras.layers.Input(shape=self.input_shape, name='i2i_input')
-        x = input_layer
+        g_input = tf.keras.layers.Input(shape=self.input_shape, name='i2i_input')
+        x = g_input
         xs = []
         channels, n_convs = self.infos[0]
         for _ in range(n_convs):
@@ -75,23 +93,35 @@ class Model:
                 x = self.conv2d(x, channels, 3, 1, bn=bn, activation=activation)
 
         if self.output_scale == 1:
-            output_layer = self.output_layer(x, input_layer, name='i2i_output')
+            g_output = self.g_output(x, g_input, name='i2i_output')
         else:
             if dts:
                 output_channels = self.output_shape[-1] * self.output_scale * self.output_scale
                 x = self.conv2d(x, output_channels, 1, 1, bn=bn, activation='sigmoid')
                 # use hard-coded constant for avoiding Not JSON Serializable error at onnx conversion
                 if self.output_scale == 2:
-                    output_layer = tf.keras.layers.Lambda(lambda x: tf.nn.depth_to_space(x, 2), name='i2i_output')(x)
+                    g_output = tf.keras.layers.Lambda(lambda x: tf.nn.depth_to_space(x, 2), name='i2i_output')(x)
                 else:
-                    output_layer = tf.keras.layers.Lambda(lambda x: tf.nn.depth_to_space(x, 4), name='i2i_output')(x)
+                    g_output = tf.keras.layers.Lambda(lambda x: tf.nn.depth_to_space(x, 4), name='i2i_output')(x)
             else:
                 if self.output_scale >= 2:
                     x = self.conv2dtranspose(x, max(self.infos[0][0]//2, 4), 4, 2, bn=bn, activation=activation)
                 if self.output_scale >= 4:
                     x = self.conv2dtranspose(x, max(self.infos[0][0]//4, 4), 4, 2, bn=bn, activation=activation)
-                output_layer = self.output_layer(x, input_layer, name='i2i_output')
-        return tf.keras.models.Model(input_layer, output_layer)
+                g_output = self.output_layer(x, g_input, name='i2i_output')
+        return g_input, g_output
+
+    def build_d(self, bn):
+        d_input = tf.keras.layers.Input(shape=self.output_shape)
+        x = d_input
+        x = self.conv2d(x, 16, 3, 2, bn=bn, activation='leaky')
+        x = self.conv2d(x, 32, 3, 2, bn=bn, activation='leaky')
+        x = self.conv2d(x, 64, 3, 2, bn=bn, activation='leaky')
+        x = self.conv2d(x, 128, 3, 2, bn=bn, activation='leaky')
+        x = self.conv2d(x, 256, 3, 2, bn=bn, activation='leaky')
+        x = self.flatten(x)
+        d_output = self.dense(x, 1, activation='linear', bn=False)
+        return d_input, d_output
 
     def output_layer(self, x, input_layer, bn=False, additive=False, name='i2i_output'):
         if additive:
@@ -140,6 +170,18 @@ class Model:
         if bn:
             x = self.batch_normalization(x)
         return self.activation(x, activation)
+
+    def dense(self, x, units, bn=False, activation='linear'):
+        x = tf.keras.layers.Dense(
+            units=units,
+            use_bias=not bn,
+            kernel_initializer=self.kernel_initializer())(x)
+        if bn:
+            x = self.batch_normalization(x)
+        return self.activation(x, activation)
+
+    def flatten(self, x):
+        return tf.keras.layers.Flatten()(x)
 
     def maxpooling2d(self, x):
         return tf.keras.layers.MaxPooling2D()(x)

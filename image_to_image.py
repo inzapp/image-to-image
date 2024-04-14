@@ -58,7 +58,9 @@ class TrainingConfig:
                  unet_depth,
                  iterations,
                  save_interval,
+                 use_adversarial_loss,
                  pretrained_model_path='',
+                 pretrained_discriminator_path='',
                  nv12=False,
                  training_view=False):
         self.train_image_path = train_image_path
@@ -72,7 +74,9 @@ class TrainingConfig:
         self.unet_depth = unet_depth
         self.iterations = iterations
         self.save_interval = save_interval
+        self.use_adversarial_loss = use_adversarial_loss
         self.pretrained_model_path = pretrained_model_path
+        self.pretrained_discriminator_path = pretrained_discriminator_path
         self.nv12 = nv12
         self.training_view = training_view
 
@@ -102,9 +106,12 @@ class ImageToImage(CheckpointManager):
         self.unet_depth = config.unet_depth
         self.iterations = config.iterations
         self.save_interval = config.save_interval
+        self.use_adversarial_loss = config.use_adversarial_loss
         self.pretrained_model_path = config.pretrained_model_path
+        self.pretrained_discriminator_path = config.pretrained_discriminator_path
         self.nv12 = config.nv12
         self.training_view = config.training_view
+        self.pretrained_iteration_count = 0
 
         warnings.filterwarnings(action='ignore')
         self.set_model_name(config.model_name)
@@ -123,20 +130,29 @@ class ImageToImage(CheckpointManager):
         self.train_image_paths_x, self.train_image_paths_y = self.init_image_paths(self.train_image_path)
         self.validation_image_paths_x, self.validation_image_paths_y = self.init_image_paths(self.validation_image_path)
 
-        self.pretrained_iteration_count = 0
+        g_model, d_model = None, None
         if self.pretrained_model_path != '':
             if not (os.path.exists(self.pretrained_model_path) and os.path.isfile(self.pretrained_model_path)):
-                print(f'file not found : {model_path}')
+                print(f'file not found : {self.pretrained_model_path}')
                 exit(0)
-            self.model = tf.keras.models.load_model(self.pretrained_model_path, compile=False, custom_objects={'tf': tf})
-            self.input_shape = self.model.input_shape[1:]
-            self.output_shape = self.model.output_shape[1:]
+            g_model = tf.keras.models.load_model(self.pretrained_model_path, compile=False, custom_objects={'tf': tf})
             self.pretrained_iteration_count = self.parse_pretrained_iteration_count(self.pretrained_model_path)
             self.nv12 = self.pretrained_model_path.find('nv12') > -1
-        else:
-            self.model = Model(
-                input_shape=self.input_shape,
-                output_shape=self.output_shape).build(unet_depth=self.unet_depth)
+
+        if self.pretrained_discriminator_path != '':
+            if not (os.path.exists(self.pretrained_discriminator_path) and os.path.isfile(self.pretrained_discriminator_path)):
+                print(f'file not found : {self.pretrained_discriminator_path}')
+                exit(0)
+            d_model = tf.keras.models.load_model(self.pretrained_discriminator_path, compile=False, custom_objects={'tf': tf})
+            self.use_adversarial_loss = True
+
+        self.model, self.discriminator, self.gan = Model(
+            input_shape=self.input_shape,
+            output_shape=self.output_shape).build(unet_depth=self.unet_depth, g_model=g_model, d_model=d_model, build_gan=self.use_adversarial_loss)
+
+        if self.pretrained_model_path != '':
+            self.input_shape = self.model.input_shape[1:]
+            self.output_shape = self.model.output_shape[1:]
 
         self.train_data_generator = DataGenerator(
             image_paths_x=self.train_image_paths_x,
@@ -145,6 +161,7 @@ class ImageToImage(CheckpointManager):
             output_shape=self.output_shape,
             batch_size=self.batch_size,
             nv12=self.nv12,
+            g_model=self.model,
             training=True)
         self.validation_data_generator = DataGenerator(
             image_paths_x=self.validation_image_paths_x,
@@ -179,7 +196,6 @@ class ImageToImage(CheckpointManager):
                 paths_y.append(path)
         return paths_x, paths_y
 
-    @tf.function
     def compute_gradient(self, model, optimizer, x, y_true):
         with tf.GradientTape() as tape:
             y_pred = model(x, training=True)
@@ -188,8 +204,9 @@ class ImageToImage(CheckpointManager):
         optimizer.apply_gradients(zip(gradients, model.trainable_variables))
         return loss
 
+    @staticmethod
     @tf.function
-    def graph_forward(self, model, x):
+    def graph_forward(model, x):
         return model(x, training=False)
 
     def concat(self, images):
@@ -209,7 +226,7 @@ class ImageToImage(CheckpointManager):
     def predict(self, img_x):
         x = self.train_data_generator.preprocess(img_x, image_type='x')
         x = x.reshape((1,) + x.shape)
-        img_pred = self.train_data_generator.postprocess(np.array(self.graph_forward(self.model, x)[0]))
+        img_pred = self.train_data_generator.postprocess(np.array(ImageToImage.graph_forward(self.model, x)[0]))
         return img_pred
 
     def predict_video(self, video_path):
@@ -282,9 +299,12 @@ class ImageToImage(CheckpointManager):
                 exit(0)
         cv2.destroyAllWindows()
 
-    def print_loss(self, progress_str, loss):
+    def print_loss(self, progress_str, reconstruction_loss, discriminator_loss, adversarial_loss):
         loss_str = f'\r{progress_str}'
-        loss_str += f' loss : {loss:>8.4f}'
+        loss_str += f' reconstruction_loss : {reconstruction_loss:>8.4f}'
+        if self.use_adversarial_loss:
+            loss_str += f', discriminator_loss : {discriminator_loss:>8.4f}'
+            loss_str += f', adversarial_loss : {adversarial_loss:>8.4f}'
         print(loss_str, end='')
 
     def psnr(self, img_a, img_b, max_val):
@@ -375,31 +395,58 @@ class ImageToImage(CheckpointManager):
     def train(self):
         self.exit_if_no_images(self.train_image_paths_y, self.train_image_path)
         self.exit_if_no_images(self.validation_image_paths_y, self.validation_image_path)
+        if self.use_adversarial_loss:
+            self.discriminator.summary()
+            print()
+            self.gan.summary()
+            print()
         self.model.summary()
-        print(f'\ntrain on {len(self.train_image_paths_y)} gt, {len(self.train_image_paths_x)} input samples.')
+        print(f'\ntrain on {len(self.train_image_paths_y)} y, {len(self.train_image_paths_x)} x samples.')
         print('start training')
         nv12_content = '_nv12' if self.nv12 else ''
         self.init_checkpoint_dir()
         iteration_count = self.pretrained_iteration_count
-        optimizer = tf.keras.optimizers.Adam(learning_rate=self.lr)
-        lr_scheduler = LRScheduler(lr=self.lr, iterations=self.iterations, warm_up=self.warm_up, policy='step')
+        compute_gradient_m = tf.function(self.compute_gradient)
+        optimizer_m = tf.keras.optimizers.Adam(learning_rate=self.lr)
+        lr_scheduler_m = LRScheduler(lr=self.lr, iterations=self.iterations, warm_up=self.warm_up, policy='step')
+        if self.use_adversarial_loss:
+            d_lr = self.lr
+            g_lr = self.lr * 0.001
+            optimizer_d = tf.keras.optimizers.RMSprop(learning_rate=d_lr)
+            optimizer_g = tf.keras.optimizers.RMSprop(learning_rate=g_lr)
+            lr_scheduler_d = LRScheduler(lr=d_lr, iterations=self.iterations, warm_up=self.warm_up, policy='step')
+            lr_scheduler_g = LRScheduler(lr=g_lr, iterations=self.iterations, warm_up=self.warm_up, policy='step')
+            compute_gradient_d = tf.function(self.compute_gradient)
+            compute_gradient_g = tf.function(self.compute_gradient)
         eta_calculator = ETACalculator(iterations=self.iterations)
         eta_calculator.start()
         while True:
-            batch_x, batch_y = self.train_data_generator.load()
-            lr_scheduler.update(optimizer, iteration_count)
-            loss = self.compute_gradient(self.model, optimizer, batch_x, batch_y)
+            batch_x, batch_y, dx, dy, gx, gy = self.train_data_generator.load(use_adversarial_loss=self.use_adversarial_loss)
+            lr_scheduler_m.update(optimizer_m, iteration_count)
+            loss = compute_gradient_m(self.model, optimizer_m, batch_x, batch_y)
+            discriminator_loss, adversarial_loss = 0.0, 0.0
+            if self.use_adversarial_loss:
+                self.discriminator.training = True
+                lr_scheduler_d.update(optimizer_d, iteration_count)
+                discriminator_loss = compute_gradient_d(self.discriminator, optimizer_d, dx, dy)
+                self.discriminator.training = False
+                lr_scheduler_g.update(optimizer_g, iteration_count)
+                adversarial_loss = compute_gradient_g(self.gan, optimizer_g, gx, gy)
             iteration_count += 1
             progress_str = eta_calculator.update(iteration_count)
-            self.print_loss(progress_str, loss)
+            self.print_loss(progress_str, loss, discriminator_loss, adversarial_loss)
             if self.training_view:
                 self.training_view_function()
             if iteration_count % 2000 == 0:
                 self.save_last_model(self.model, iteration_count, content=nv12_content)
+                if self.use_adversarial_loss:
+                    self.save_last_model(self.discriminator, iteration_count, content=f'{nv12_content}_discriminator')
             if iteration_count % self.save_interval == 0:
                 psnr, ssim = self.evaluate()
                 content = f'_psnr_{psnr:.2f}_ssim_{ssim:.4f}{nv12_content}'
                 self.save_best_model(self.model, iteration_count, content=content, metric=psnr)
+                if self.use_adversarial_loss:
+                    self.save_best_model(self.discriminator, iteration_count, content=f'{content}_discriminator', metric=psnr)
             if iteration_count == self.iterations:
                 print('train end successfully')
                 return

@@ -41,13 +41,16 @@ class DataGenerator:
                  output_shape,
                  batch_size,
                  nv12,
+                 g_model=None,
                  training=False):
         self.image_paths_y = image_paths_y
         self.image_paths_x = image_paths_x
         self.input_shape = input_shape
         self.output_shape = output_shape
         self.batch_size = batch_size
+        self.half_batch_size = batch_size // 2
         self.nv12 = nv12
+        self.g_model = g_model
         self.training = training
 
         self.img_index = 0
@@ -55,7 +58,7 @@ class DataGenerator:
         self.x_image_paths_of = self.get_x_image_paths_of(self.image_paths_y, self.image_paths_x)
         np.random.shuffle(self.image_paths_y)
 
-    def load(self):
+    def load(self, use_adversarial_loss):
         fs = []
         for _ in range(self.batch_size):
             fs.append(self.pool.submit(self.load_image_pair, self.next_image_path()))
@@ -66,7 +69,24 @@ class DataGenerator:
             batch_y.append(self.preprocess(img_y, image_type='y'))
         batch_x = np.asarray(batch_x).astype(np.float32)
         batch_y = np.asarray(batch_y).astype(np.float32)
-        return batch_x, batch_y
+
+        dx, dy, gx, gy = None, None, None, None
+        if use_adversarial_loss:
+            from image_to_image import ImageToImage
+            real_dx = batch_y[:self.half_batch_size]
+            fake_dx = np.asarray(ImageToImage.graph_forward(self.g_model, batch_x[:self.half_batch_size]))
+            dx = np.concatenate([real_dx, fake_dx], axis=0)
+            real_dy = np.ones((self.half_batch_size, 1))
+            fake_dy = np.zeros((self.half_batch_size, 1))
+            dy = np.concatenate([real_dy, fake_dy])
+            gx = batch_x
+            gy = np.ones((self.batch_size, 1))
+
+            dx = np.asarray(dx).reshape((self.batch_size,) + self.output_shape).astype(np.float32)
+            dy = np.asarray(dy).reshape((self.batch_size, 1)).astype(np.float32)
+            gx = np.asarray(gx).reshape((self.batch_size,) + self.input_shape).astype(np.float32)
+            gy = np.asarray(gy).reshape((self.batch_size, 1)).astype(np.float32)
+        return batch_x, batch_y, dx, dy, gx, gy
 
     def preprocess(self, img, image_type):
         assert image_type in ['x', 'y']

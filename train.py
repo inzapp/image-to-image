@@ -31,8 +31,8 @@ from image_to_image import TrainingConfig, ImageToImage
 
 if __name__ == '__main__':
     config = TrainingConfig(
-        train_image_path='/train_data/coco/train',
-        validation_image_path='/train_data/coco/validation',
+        train_image_path='/train_data/bsd/train',
+        validation_image_path='/train_data/bsd/validation',
         model_name='model',
         input_shape=(256, 256, 3),
         output_shape=(256, 256, 3),
@@ -42,6 +42,7 @@ if __name__ == '__main__':
         unet_depth=2,
         iterations=100000,
         save_interval=10000,
+        use_adversarial_loss=False,
         training_view=False)
 
     parser = argparse.ArgumentParser()
