@@ -440,13 +440,13 @@ class ImageToImage(CheckpointManager):
             if iteration_count % 2000 == 0:
                 self.save_last_model(self.model, iteration_count, content=nv12_content)
                 if self.use_adversarial_loss:
-                    self.save_last_model(self.discriminator, iteration_count, content=f'{nv12_content}_discriminator')
+                    self.save_last_model(self.discriminator, iteration_count, content=f'{nv12_content}_discriminator', remove=False)
             if iteration_count % self.save_interval == 0:
                 psnr, ssim = self.evaluate()
                 content = f'_psnr_{psnr:.2f}_ssim_{ssim:.4f}{nv12_content}'
                 self.save_best_model(self.model, iteration_count, content=content, metric=psnr)
                 if self.use_adversarial_loss:
-                    self.save_best_model(self.discriminator, iteration_count, content=f'{content}_discriminator', metric=psnr)
+                    self.save_best_model(self.discriminator, iteration_count, content=f'{content}_discriminator', metric=psnr, remove=False, force=True)
             if iteration_count == self.iterations:
                 print('train end successfully')
                 return
