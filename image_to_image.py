@@ -368,7 +368,7 @@ class ImageToImage(CheckpointManager):
             if show_or_save_images:
                 img_x = data_generator.resize(img_x, (img_pred_w, img_pred_h))
                 img_x = img_x.reshape((img_pred_h, img_pred_w, -1))
-                img_concat = self.concat([img_x, img_pred])
+                img_concat = self.concat([img_x, img_pred, img_y])
                 if show:
                     cv2.imshow('img', img_concat)
                     key = cv2.waitKey(0)
@@ -456,9 +456,11 @@ class ImageToImage(CheckpointManager):
         if cur_time - self.live_view_previous_time > 0.5:
             self.live_view_previous_time = cur_time
             path = np.random.choice(self.validation_image_paths_y)
-            img = self.validation_data_generator.load_image_x(path)
-            img_pred = self.predict(img)
-            img_concat = self.concat([img, img_pred])
+            img_x = self.validation_data_generator.load_image_x(path)
+            img_x = self.validation_data_generator.resize(img_x, (self.input_shape[1], self.input_shape[0]))
+            img_y = self.validation_data_generator.load_image_y(path)
+            img_pred = self.predict(img_x)
+            img_concat = self.concat([img_x, img_pred, img_y])
             cv2.imshow('training view', img_concat)
             cv2.waitKey(1)
 
