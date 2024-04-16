@@ -408,14 +408,14 @@ class ImageToImage(CheckpointManager):
         iteration_count = self.pretrained_iteration_count
         compute_gradient_m = tf.function(self.compute_gradient)
         optimizer_m = tf.keras.optimizers.Adam(learning_rate=self.lr)
-        lr_scheduler_m = LRScheduler(lr=self.lr, iterations=self.iterations, warm_up=self.warm_up, policy='step')
+        lr_scheduler_m = LRScheduler(lr=self.lr, iterations=self.iterations, warm_up=self.warm_up, policy='step2')
         if self.use_adversarial_loss:
             d_lr = self.lr
             g_lr = self.lr * 0.001
             optimizer_d = tf.keras.optimizers.RMSprop(learning_rate=d_lr)
             optimizer_g = tf.keras.optimizers.RMSprop(learning_rate=g_lr)
-            lr_scheduler_d = LRScheduler(lr=d_lr, iterations=self.iterations, warm_up=self.warm_up, policy='step')
-            lr_scheduler_g = LRScheduler(lr=g_lr, iterations=self.iterations, warm_up=self.warm_up, policy='step')
+            lr_scheduler_d = LRScheduler(lr=d_lr, iterations=self.iterations, warm_up=self.warm_up, policy='step2')
+            lr_scheduler_g = LRScheduler(lr=g_lr, iterations=self.iterations, warm_up=self.warm_up, policy='step2')
             compute_gradient_d = tf.function(self.compute_gradient)
             compute_gradient_g = tf.function(self.compute_gradient)
         eta_calculator = ETACalculator(iterations=self.iterations)
