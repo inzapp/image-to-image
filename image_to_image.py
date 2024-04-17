@@ -426,10 +426,10 @@ class ImageToImage(CheckpointManager):
             loss = compute_gradient_m(self.model, optimizer_m, batch_x, batch_y)
             discriminator_loss, adversarial_loss = 0.0, 0.0
             if self.use_adversarial_loss:
-                self.discriminator.training = True
+                self.discriminator.trainable = True
                 lr_scheduler_d.update(optimizer_d, iteration_count)
                 discriminator_loss = compute_gradient_d(self.discriminator, optimizer_d, dx, dy)
-                self.discriminator.training = False
+                self.discriminator.trainable = False
                 lr_scheduler_g.update(optimizer_g, iteration_count)
                 adversarial_loss = compute_gradient_g(self.gan, optimizer_g, gx, gy)
             iteration_count += 1
