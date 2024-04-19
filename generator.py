@@ -58,6 +58,12 @@ class DataGenerator:
         self.x_image_paths_of = self.get_x_image_paths_of(self.image_paths_y, self.image_paths_x)
         np.random.shuffle(self.image_paths_y)
 
+        self.aug_noise = 0.1
+        self.transform = A.Compose([
+            A.Lambda(name='random_noise', image=self.random_noise, p=0.1),
+            A.GaussianBlur(p=0.1, blur_limit=(3, 3))
+        ])
+
     def load(self, use_adversarial_loss):
         fs = []
         for _ in range(self.batch_size):
@@ -65,6 +71,9 @@ class DataGenerator:
         batch_x, batch_y = [], []
         for f in fs:
             img_x, img_y = f.result()
+            img_x = self.transform(image=img_x)['image']
+            if np.random.uniform() < 0.3:
+                img_x, img_y = self.green_background_crop(img_x, img_y)
             batch_x.append(self.preprocess(img_x, image_type='x'))
             batch_y.append(self.preprocess(img_y, image_type='y'))
         batch_x = np.asarray(batch_x).astype(np.float32)
@@ -87,6 +96,61 @@ class DataGenerator:
             gx = np.asarray(gx).reshape((self.batch_size,) + self.input_shape).astype(np.float32)
             gy = np.asarray(gy).reshape((self.batch_size, 1)).astype(np.float32)
         return batch_x, batch_y, dx, dy, gx, gy
+
+    def make_green_background_crop_param(self):
+        if np.random.uniform() < 0.5:
+            range_min = (40, 176, 47)
+            range_max = (64, 255, 73)
+
+            random_b = np.random.randint(range_min[0], range_max[0])
+            random_g = np.random.randint(range_min[1], range_max[1])
+            random_r = np.random.randint(range_min[2], range_max[2])
+
+            random_bgr = (random_b, random_g, random_r)
+        else:
+            random_bgr = (0, 0, 0)
+
+        random_crop_hf = np.random.uniform() * 0.7 + 0.3
+        random_crop_wf = np.random.uniform() * 0.7 + 0.3
+        return random_bgr, random_crop_wf, random_crop_hf
+
+    def green_background_crop_with_param(self, img, bgr, crop_wf, crop_hf, generation_pixel):
+        green_background = np.zeros_like(img)
+        b, g, r = bgr
+        green_background[:, :, 0] = b
+        green_background[:, :, 1] = g
+        green_background[:, :, 2] = r
+
+        img_h, img_w = img.shape[:2]
+
+        x1 = 0
+        y1 = 0
+        x2 = int(crop_wf * img_w)
+        y2 = int(crop_hf * img_h)
+        if generation_pixel > 0:
+            x2 += generation_pixel
+            y2 += generation_pixel
+            x2 = x2 if x2 <= img_w else img_w
+            y2 = y2 if y2 <= img_h else img_h
+        img_crop = img[y1:y2, x1:x2]
+        green_background[y1:y2, x1:x2] = img[y1:y2, x1:x2]
+        return green_background
+
+    def green_background_crop(self, img_x, img_y):
+        bgr, crop_wf, crop_hf = self.make_green_background_crop_param()
+        img_x = self.green_background_crop_with_param(img_x, bgr, crop_wf, crop_hf, 0)
+        img_y = self.green_background_crop_with_param(img_y, bgr, crop_wf, crop_hf, 8)
+        return img_x, img_y
+
+    def random_noise(self, img, **kwargs):
+        if self.aug_noise > 0.0:
+            img = np.array(img).astype(np.float32)
+            noise_power = np.random.uniform() * (self.aug_noise * 255.0)
+            img_h, img_w = img.shape[:2]
+            img = img.reshape((img_h, img_w, -1))
+            img += np.random.uniform(-noise_power, noise_power, size=(img_h, img_w, self.input_shape[-1]))
+            img = np.clip(img, 0.0, 255.0).astype(np.uint8)
+        return img
 
     def preprocess(self, img, image_type):
         assert image_type in ['x', 'y']
@@ -146,7 +210,8 @@ class DataGenerator:
         interpolation = None
         img_h, img_w = img.shape[:2]
         interpolation_upscaling = cv2.INTER_CUBIC
-        interpolation_downscaling = np.random.choice([cv2.INTER_LINEAR, cv2.INTER_AREA, cv2.INTER_CUBIC]) if self.training else cv2.INTER_AREA
+        # interpolation_downscaling = np.random.choice([cv2.INTER_LINEAR, cv2.INTER_AREA, cv2.INTER_CUBIC]) if self.training else cv2.INTER_AREA
+        interpolation_downscaling = cv2.INTER_CUBIC
         if scale != 1.0:
             if scale > 1.0:
                 interpolation = interpolation_upscaling
