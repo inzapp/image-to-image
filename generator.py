@@ -146,7 +146,7 @@ class DataGenerator:
         interpolation = None
         img_h, img_w = img.shape[:2]
         interpolation_upscaling = cv2.INTER_CUBIC
-        interpolation_downscaling = np.random.choice([cv2.INTER_LINEAR, cv2.INTER_AREA, cv2.INTER_CUBIC]) if self.training else cv2.INTER_AREA
+        interpolation_downscaling = cv2.INTER_CUBIC
         if scale != 1.0:
             if scale > 1.0:
                 interpolation = interpolation_upscaling
