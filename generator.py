@@ -62,9 +62,9 @@ class DataGenerator:
         self.transform = A.Compose([
             A.OneOf([
                 A.Lambda(name='random_noise', image=self.random_noise, p=1.0, always_apply=True),
-                A.GaussianBlur(p=1.0, blur_limit=(3, 5), always_apply=True),
                 A.MotionBlur(p=1.0, blur_limit=(3, 5), allow_shifted=False, always_apply=True),
                 A.MedianBlur(p=1.0, blur_limit=(3, 3), always_apply=True),
+                A.GaussianBlur(p=1.0, blur_limit=(3, 5), always_apply=True),
             ], p=0.5)
         ])
 
