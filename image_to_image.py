@@ -358,6 +358,7 @@ class ImageToImage(CheckpointManager):
         paths = image_paths_y if show_or_save_images else tqdm(image_paths_y)
         for path in paths:
             img_x = data_generator.load_image_x(path, no_x=no_x)
+            img_x = data_generator.transform_image(img_x)
             img_x = data_generator.resize(img_x, (self.input_shape[1], self.input_shape[0]))
             img_y = data_generator.load_image_y(path)
             img_pred = self.predict(img_x)
@@ -457,6 +458,7 @@ class ImageToImage(CheckpointManager):
             self.live_view_previous_time = cur_time
             path = np.random.choice(self.validation_image_paths_y)
             img_x = self.validation_data_generator.load_image_x(path)
+            img_x = self.validation_data_generator.transform_image(img_x)
             img_x = self.validation_data_generator.resize(img_x, (self.input_shape[1], self.input_shape[0]))
             img_y = self.validation_data_generator.load_image_y(path)
             img_pred = self.predict(img_x)

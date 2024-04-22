@@ -60,8 +60,12 @@ class DataGenerator:
 
         self.aug_noise = 0.1
         self.transform = A.Compose([
-            A.Lambda(name='random_noise', image=self.random_noise, p=0.1),
-            A.GaussianBlur(p=0.1, blur_limit=(3, 3))
+            A.OneOf([
+                A.Lambda(name='random_noise', image=self.random_noise, p=1.0, always_apply=True),
+                A.GaussianBlur(p=1.0, blur_limit=(3, 5), always_apply=True),
+                A.MotionBlur(p=1.0, blur_limit=(3, 5), allow_shifted=False, always_apply=True),
+                A.MedianBlur(p=1.0, blur_limit=(3, 3), always_apply=True),
+            ], p=0.5)
         ])
 
     def load(self, use_adversarial_loss):
@@ -71,7 +75,7 @@ class DataGenerator:
         batch_x, batch_y = [], []
         for f in fs:
             img_x, img_y = f.result()
-            img_x = self.transform(image=img_x)['image']
+            img_x = self.transform_image(img_x)
             if np.random.uniform() < 0.3:
                 img_x, img_y = self.green_background_crop(img_x, img_y)
             batch_x.append(self.preprocess(img_x, image_type='x'))
@@ -96,6 +100,9 @@ class DataGenerator:
             gx = np.asarray(gx).reshape((self.batch_size,) + self.input_shape).astype(np.float32)
             gy = np.asarray(gy).reshape((self.batch_size, 1)).astype(np.float32)
         return batch_x, batch_y, dx, dy, gx, gy
+
+    def transform_image(self, img):
+        return self.transform(image=img)['image']
 
     def make_green_background_crop_param(self):
         if np.random.uniform() < 0.5:
