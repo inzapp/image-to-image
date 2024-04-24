@@ -148,7 +148,8 @@ class ImageToImage(CheckpointManager):
 
         self.model, self.discriminator, self.gan = Model(
             input_shape=self.input_shape,
-            output_shape=self.output_shape).build(unet_depth=self.unet_depth, g_model=g_model, d_model=d_model, build_gan=self.use_adversarial_loss)
+            output_shape=self.output_shape,
+            build_gan=self.use_adversarial_loss).build(unet_depth=self.unet_depth, g_model=g_model, d_model=d_model)
 
         if self.pretrained_model_path != '':
             self.input_shape = self.model.input_shape[1:]
