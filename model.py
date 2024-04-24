@@ -29,9 +29,10 @@ import tensorflow as tf
 
 
 class Model:
-    def __init__(self, input_shape, output_shape):
+    def __init__(self, input_shape, output_shape, build_gan):
         self.input_shape = input_shape
         self.output_shape = output_shape
+        self.build_gan = build_gan
         self.output_scale = self.calc_output_scale(self.input_shape, self.output_shape)
         self.infos = None
 
@@ -49,15 +50,15 @@ class Model:
         assert output_scale in [1, 2, 4]
         return output_scale
 
-    def build(self, unet_depth, build_gan, g_model, d_model, bn=False, dts=True, activation='relu'):
+    def build(self, unet_depth, g_model, d_model, bn=False, dts=True):
         if g_model is None:
-            g_input, g_output = self.build_g(unet_depth, bn, dts, activation)
+            g_input, g_output = self.build_g(unet_depth, bn, dts, activation='leaky' if self.build_gan else 'relu')
         else:
             g_input, g_output = g_model.input, g_model.output
         g_model = tf.keras.models.Model(g_input, g_output)
 
         d_model, gan = None, None
-        if build_gan:
+        if self.build_gan:
             if d_model is None:
                 d_input, d_output = self.build_d(bn=False)
             else:
@@ -111,14 +112,14 @@ class Model:
                 g_output = self.output_layer(x, g_input, name='i2i_output')
         return g_input, g_output
 
-    def build_d(self, bn):
+    def build_d(self, bn, activation='leaky'):
         d_input = tf.keras.layers.Input(shape=self.output_shape)
         x = d_input
-        x = self.conv2d(x, 16, 3, 2, bn=bn, activation='leaky')
-        x = self.conv2d(x, 32, 3, 2, bn=bn, activation='leaky')
-        x = self.conv2d(x, 64, 3, 2, bn=bn, activation='leaky')
-        x = self.conv2d(x, 128, 3, 2, bn=bn, activation='leaky')
-        x = self.conv2d(x, 256, 3, 2, bn=bn, activation='leaky')
+        x = self.conv2d(x, 16, 3, 2, bn=bn, activation=activation)
+        x = self.conv2d(x, 32, 3, 2, bn=bn, activation=activation)
+        x = self.conv2d(x, 64, 3, 2, bn=bn, activation=activation)
+        x = self.conv2d(x, 128, 3, 2, bn=bn, activation=activation)
+        x = self.conv2d(x, 256, 3, 2, bn=bn, activation=activation)
         x = self.flatten(x)
         d_output = self.dense(x, 1, activation='linear', bn=False)
         return d_input, d_output
@@ -196,7 +197,10 @@ class Model:
         return tf.keras.layers.BatchNormalization()(x)
 
     def kernel_initializer(self):
-        return tf.keras.initializers.he_normal()
+        if self.build_gan:
+            return tf.keras.initializers.RandomNormal(mean=0.0, stddev=0.02)
+        else:
+            return tf.keras.initializers.GlorotNormal()
 
     def kernel_regularizer(self, l2=0.01):
         return tf.keras.regularizers.l2(l2=l2)
