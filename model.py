@@ -72,7 +72,8 @@ class Model:
         if unet_depth == 0:
             self.infos = [[32, 3]]
         else:
-            self.infos = [[16, 1], [32, 1], [64, 2], [128, 2], [256, 2], [256, 2]]
+            # self.infos = [[16, 1], [32, 1], [64, 2], [128, 2], [256, 2], [256, 2]]
+            self.infos = [[32, 1], [64, 1], [128, 2], [128, 2], [256, 2], [256, 2]]
         g_input = tf.keras.layers.Input(shape=self.input_shape, name='i2i_input')
         x = g_input
         xs = []
@@ -92,6 +93,12 @@ class Model:
             x = self.add([x, xs.pop()])
             for _ in range(n_convs):
                 x = self.conv2d(x, channels, 3, 1, bn=bn, activation=activation)
+
+        # espcn test
+        # g_input = tf.keras.layers.Input(shape=self.input_shape, name='i2i_input')
+        # x = g_input
+        # x = self.conv2d(x, 64, 5, 1, bn=bn, activation='tanh')
+        # x = self.conv2d(x, 32, 3, 1, bn=bn, activation='tanh')
 
         if self.output_scale == 1:
             g_output = self.g_output(x, g_input, name='i2i_output')

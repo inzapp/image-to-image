@@ -344,7 +344,7 @@ class ImageToImage(CheckpointManager):
             image_paths_y=image_paths_y,
             input_shape=self.input_shape,
             output_shape=self.output_shape,
-            batch_size=self.batch_size,
+            batch_size=1,
             nv12=self.nv12)
 
         if save_count > 0:
@@ -359,8 +359,8 @@ class ImageToImage(CheckpointManager):
         paths = image_paths_y if show_or_save_images else tqdm(image_paths_y)
         for path in paths:
             img_x = data_generator.load_image_x(path, no_x=no_x)
-            img_x = data_generator.transform_image(img_x)
             img_x = data_generator.resize(img_x, (self.input_shape[1], self.input_shape[0]))
+            img_x = data_generator.transform_image(img_x)
             img_y = data_generator.load_image_y(path)
             img_pred = self.predict(img_x)
             img_pred_h, img_pred_w = img_pred.shape[:2]
@@ -370,7 +370,8 @@ class ImageToImage(CheckpointManager):
             if show_or_save_images:
                 img_x = data_generator.resize(img_x, (img_pred_w, img_pred_h))
                 img_x = img_x.reshape((img_pred_h, img_pred_w, -1))
-                img_concat = self.concat([img_x, img_pred, img_y])
+                # img_concat = self.concat([img_x, img_pred, img_y])
+                img_concat = self.concat([img_x, img_pred])
                 if show:
                     cv2.imshow('img', img_concat)
                     key = cv2.waitKey(0)

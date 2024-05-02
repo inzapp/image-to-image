@@ -61,11 +61,11 @@ class DataGenerator:
         self.aug_noise = 0.1
         self.transform = A.Compose([
             A.OneOf([
+                # A.Lambda(name='linear', image=self.linear, p=1.0, always_apply=True),
                 A.Lambda(name='random_noise', image=self.random_noise, p=1.0, always_apply=True),
-                A.MotionBlur(p=1.0, blur_limit=(3, 5), allow_shifted=False, always_apply=True),
-                A.MedianBlur(p=1.0, blur_limit=(3, 3), always_apply=True),
-                A.GaussianBlur(p=1.0, blur_limit=(3, 5), always_apply=True),
-            ], p=0.5)
+                # A.MotionBlur(p=1.0, blur_limit=(3, 5), allow_shifted=False, always_apply=True),
+                # A.GaussianBlur(p=1.0, blur_limit=(3, 5), always_apply=True),
+            ], p=1.0)
         ])
 
     def load(self, use_adversarial_loss):
@@ -75,9 +75,10 @@ class DataGenerator:
         batch_x, batch_y = [], []
         for f in fs:
             img_x, img_y = f.result()
+            img_x = self.resize(img_x, (self.input_shape[1], self.input_shape[0]))  # warning : nv12 does not work, use nv12 size
             img_x = self.transform_image(img_x)
-            if np.random.uniform() < 0.3:
-                img_x, img_y = self.green_background_crop(img_x, img_y)
+            # if np.random.uniform() < 0.05:
+            #     img_x, img_y = self.green_background_crop(img_x, img_y)
             batch_x.append(self.preprocess(img_x, image_type='x'))
             batch_y.append(self.preprocess(img_y, image_type='y'))
         batch_x = np.asarray(batch_x).astype(np.float32)
@@ -87,7 +88,7 @@ class DataGenerator:
         if use_adversarial_loss:
             from image_to_image import ImageToImage
             real_dx = batch_y[:self.half_batch_size]
-            fake_dx = np.asarray(ImageToImage.graph_forward(self.g_model, batch_x[:self.half_batch_size]))
+            fake_dx = np.asarray(ImageToImage.graph_forward(self.g_model, batch_x[self.half_batch_size:]))
             dx = np.concatenate([real_dx, fake_dx], axis=0)
             real_dy = np.ones((self.half_batch_size, 1))
             fake_dy = np.zeros((self.half_batch_size, 1))
@@ -146,7 +147,7 @@ class DataGenerator:
     def green_background_crop(self, img_x, img_y):
         bgr, crop_wf, crop_hf = self.make_green_background_crop_param()
         img_x = self.green_background_crop_with_param(img_x, bgr, crop_wf, crop_hf, 0)
-        img_y = self.green_background_crop_with_param(img_y, bgr, crop_wf, crop_hf, 8)
+        img_y = self.green_background_crop_with_param(img_y, bgr, crop_wf, crop_hf, 4)
         return img_x, img_y
 
     def random_noise(self, img, **kwargs):
@@ -157,6 +158,9 @@ class DataGenerator:
             img = img.reshape((img_h, img_w, -1))
             img += np.random.uniform(-noise_power, noise_power, size=(img_h, img_w, self.input_shape[-1]))
             img = np.clip(img, 0.0, 255.0).astype(np.uint8)
+        return img
+
+    def linear(self, img, **kwargs):
         return img
 
     def preprocess(self, img, image_type):
