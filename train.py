@@ -52,7 +52,7 @@ if __name__ == '__main__':
     parser.add_argument('--path', type=str, default='', help='image or video path for prediction or evaluation')
     parser.add_argument('--save-count', type=int, default=0, help='count for save images')
     parser.add_argument('--show', action='store_true', help='show predicted images instead evaluate')
-    parser.add_argument('--no-x', action='store_true', help='predict using given gt dataset as no x pair')
+    parser.add_argument('--no-x', action='store_true', help='ignore x pair data on the path of the given dataset. regard all datasets as y data')
     args = parser.parse_args()
     if args.model != '':
         config.pretrained_model_path = args.model
