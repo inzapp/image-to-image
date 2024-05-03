@@ -61,7 +61,6 @@ class DataGenerator:
         self.aug_noise = 0.1
         self.transform = A.Compose([
             A.OneOf([
-                # A.Lambda(name='linear', image=self.linear, p=1.0, always_apply=True),
                 A.Lambda(name='random_noise', image=self.random_noise, p=1.0, always_apply=True),
                 # A.MotionBlur(p=1.0, blur_limit=(3, 5), allow_shifted=False, always_apply=True),
                 # A.GaussianBlur(p=1.0, blur_limit=(3, 5), always_apply=True),
@@ -79,6 +78,7 @@ class DataGenerator:
             img_x = self.transform_image(img_x)
             # if np.random.uniform() < 0.05:
             #     img_x, img_y = self.green_background_crop(img_x, img_y)
+            # img_x, img_y = self.random_mosaic(img_x, img_y)  # random mosaic
             batch_x.append(self.preprocess(img_x, image_type='x'))
             batch_y.append(self.preprocess(img_y, image_type='y'))
         batch_x = np.asarray(batch_x).astype(np.float32)
@@ -104,6 +104,76 @@ class DataGenerator:
 
     def transform_image(self, img):
         return self.transform(image=img)['image']
+
+    def offset_image(self, img, offset_x, offset_y):
+        img_h, img_w = img.shape[:2]
+        img_offset = np.zeros_like(img)
+        x1_dst = max(offset_x, 0)
+        y1_dst = max(offset_y, 0)
+        x2_dst = min(img_w + offset_x, img_w)
+        y2_dst = min(img_h + offset_y, img_h)
+
+        x1_src = max(-offset_x, 0)
+        y1_src = max(-offset_y, 0)
+        x2_src = min(img_w - offset_x, img_w)
+        y2_src = min(img_h - offset_y, img_h)
+        img_offset[y1_dst:y2_dst, x1_dst:x2_dst] = img[y1_src:y2_src, x1_src:x2_src]
+        return img_offset
+
+    def random_mosaic(self, img_x, img_y):
+        img_h, img_w = img_x.shape[:2]
+
+        # left top
+        x1 = 0
+        y1 = 0
+        x2 = img_w // 2
+        y2 = img_h // 2
+        img_0 = img_x[y1:y2, x1:x2]
+        img_0 = self.transform_image(img_0)
+
+        # right top
+        x1 = img_w // 2
+        y1 = 0
+        x2 = img_w
+        y2 = img_h // 2
+        img_1 = img_x[y1:y2, x1:x2]
+        img_1 = self.transform_image(img_1)
+
+        # left bottom
+        x1 = 0
+        y1 = img_h // 2
+        x2 = img_w // 2
+        y2 = img_h
+        img_2 = img_x[y1:y2, x1:x2]
+        img_2 = self.transform_image(img_2)
+
+        # right bottom
+        x1 = img_w // 2
+        y1 = img_h // 2
+        x2 = img_w
+        y2 = img_h
+        img_3 = img_x[y1:y2, x1:x2]
+        img_3 = self.transform_image(img_3)
+
+        img_x = np.concatenate([np.concatenate([img_0, img_1], axis=1), np.concatenate([img_2, img_3], axis=1)], axis=0)
+
+        max_offset = 0.2
+        offset_x = np.random.uniform() * max_offset
+        if np.random.uniform() < 0.5:
+            offset_x *= -1.0
+        offset_y = np.random.uniform() * max_offset
+        if np.random.uniform() < 0.5:
+            offset_y *= -1.0
+
+        offset_x_img_x = int(offset_x * img_w)
+        offset_y_img_x = int(offset_y * img_h)
+
+        offset_x_img_y = offset_x_img_x * 2
+        offset_y_img_y = offset_y_img_x * 2
+
+        img_x = self.offset_image(img_x, offset_x_img_x, offset_y_img_x)
+        img_y = self.offset_image(img_y, offset_x_img_y, offset_y_img_y)
+        return img_x, img_y
 
     def make_green_background_crop_param(self):
         if np.random.uniform() < 0.5:
@@ -158,9 +228,6 @@ class DataGenerator:
             img = img.reshape((img_h, img_w, -1))
             img += np.random.uniform(-noise_power, noise_power, size=(img_h, img_w, self.input_shape[-1]))
             img = np.clip(img, 0.0, 255.0).astype(np.uint8)
-        return img
-
-    def linear(self, img, **kwargs):
         return img
 
     def preprocess(self, img, image_type):
