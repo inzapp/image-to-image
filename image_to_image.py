@@ -387,9 +387,9 @@ class ImageToImage(CheckpointManager):
             ssim = tf.image.ssim(img_y, img_pred, 255.0)
             psnr_sum += psnr
             ssim_sum += ssim
+        avg_psnr = psnr_sum / float(len(image_paths_y))
+        avg_ssim = ssim_sum / float(len(image_paths_y))
         if not show_or_save_images:
-            avg_psnr = psnr_sum / float(len(image_paths_y))
-            avg_ssim = ssim_sum / float(len(image_paths_y))
             print(f'psnr : {avg_psnr:.2f}, ssim : {avg_ssim:.4f}\n')
         return avg_psnr, avg_ssim
 
