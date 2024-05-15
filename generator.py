@@ -76,6 +76,8 @@ class DataGenerator:
             img_x, img_y = f.result()
             img_x = self.resize(img_x, (self.input_shape[1], self.input_shape[0]))  # warning : nv12 does not work, use nv12 size
             img_x = self.transform_image(img_x)
+            img_x, img_y = self.enlight_both(img_x, img_y)
+            # img_y = self.enlight_y(img_y)
             # if np.random.uniform() < 0.05:
             #     img_x, img_y = self.green_background_crop(img_x, img_y)
             # img_x, img_y = self.random_mosaic(img_x, img_y)  # random mosaic
@@ -219,6 +221,44 @@ class DataGenerator:
         img_x = self.green_background_crop_with_param(img_x, bgr, crop_wf, crop_hf, 0)
         img_y = self.green_background_crop_with_param(img_y, bgr, crop_wf, crop_hf, 4)
         return img_x, img_y
+
+    def enlight_both(self, img_x, img_y, threshold=0.25):
+        if np.random.uniform() < 1.0:
+            img_xf = np.asarray(img_x).astype(np.float32) / 255.0
+            img_yf = np.asarray(img_y).astype(np.float32) / 255.0
+            img_xf_mean = np.mean(img_xf)
+            img_yf_mean = np.mean(img_yf)
+            # print(f'\nbefore [x, y] => [{img_xf_mean:.2f}, {img_yf_mean:.2f}]')
+            if 0.001 < img_yf_mean < threshold:
+                # print(f'@case 1')
+                # increase gt image brigtness if gt image brightness is lower than threshold
+                weight_y = threshold / img_yf_mean
+                img_yf *= weight_y
+                img_y = np.clip(img_yf * 255.0, 0.0, 255.0).astype(np.uint8)
+            elif img_yf_mean > threshold:
+                # print(f'@case 2')
+                # decrease x image brightness to lower than threshold
+                min_x_threshold = 0.05
+                x_threshold = np.random.uniform() * (threshold - min_x_threshold) + min_x_threshold
+                weight_x = x_threshold / img_xf_mean
+                img_xf *= weight_x
+                img_x = np.clip(img_xf * 255.0, 0.0, 255.0).astype(np.uint8)
+
+                # decrease gt image brightness to target threshold
+                weight_y = threshold / img_yf_mean
+                img_yf *= weight_y
+                img_y = np.clip(img_yf * 255.0, 0.0, 255.0).astype(np.uint8)
+            # print(f'after  [x, y] => [{np.mean(img_xf):.2f}, {np.mean(img_yf):.2f}]')
+        return img_x, img_y
+
+    def enlight_y(self, img_y, threshold=0.3):
+        img_f = np.asarray(img_y).astype(np.float32) / 255.0
+        mean_val = np.mean(img_f)
+        if 0.001 < mean_val < threshold:
+            weight = min(mean_val + 0.125, threshold) / mean_val
+            img_f *= weight
+            img_y = np.clip(img_f * 255.0, 0.0, 255.0).astype(np.uint8)
+        return img_y
 
     def random_noise(self, img, **kwargs):
         if self.aug_noise > 0.0:
