@@ -223,7 +223,7 @@ class DataGenerator:
         return img_x, img_y
 
     def enlight_both(self, img_x, img_y, threshold=0.25):
-        if np.random.uniform() < 1.0:
+        if np.random.uniform() < 0.1:
             img_xf = np.asarray(img_x).astype(np.float32) / 255.0
             img_yf = np.asarray(img_y).astype(np.float32) / 255.0
             img_xf_mean = np.mean(img_xf)
