@@ -76,7 +76,7 @@ class DataGenerator:
             img_x, img_y = f.result()
             img_x = self.resize(img_x, (self.input_shape[1], self.input_shape[0]))  # warning : nv12 does not work, use nv12 size
             img_x = self.transform_image(img_x)
-            img_x, img_y = self.enlight_both(img_x, img_y)
+            # img_x, img_y = self.enlight_both(img_x, img_y)
             # img_y = self.enlight_y(img_y)
             # if np.random.uniform() < 0.05:
             #     img_x, img_y = self.green_background_crop(img_x, img_y)
